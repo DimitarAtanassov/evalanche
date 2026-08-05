@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -170,7 +171,7 @@ class RunRepository:
                 run.finished_at = datetime.now(UTC)
 
     async def get_cases_for_dataset(self, dataset_id: int) -> list[tuple[int, Case]]:
-        stmt = select(CaseRow).where(CaseRow.dataset_id == dataset_id)
+        stmt = select(CaseRow).where(CaseRow.dataset_id == dataset_id).order_by(CaseRow.id)
         rows = (await self.session.execute(stmt)).scalars().all()
         result: list[tuple[int, Case]] = []
         for row in rows:
@@ -309,18 +310,18 @@ class RunRepository:
         method: str,
     ) -> None:
         stmt = insert(MetricAggregateRow).values(
-                run_id=run_id,
-                metric_name=metric_name,
-                metric_version=metric_version,
-                metric_config_sha256=metric_config_sha256,
-                slice_key=slice_key,
-                n=n,
-                value=value,
-                ci_low=ci_low,
-                ci_high=ci_high,
-                stddev=stddev,
-                method=method,
-            )
+            run_id=run_id,
+            metric_name=metric_name,
+            metric_version=metric_version,
+            metric_config_sha256=metric_config_sha256,
+            slice_key=slice_key,
+            n=n,
+            value=value,
+            ci_low=ci_low,
+            ci_high=ci_high,
+            stddev=stddev,
+            method=method,
+        )
         stmt = stmt.on_conflict_do_update(
             constraint="uq_metric_aggregates_identity",
             set_={
@@ -335,7 +336,11 @@ class RunRepository:
         await self.session.execute(stmt)
 
     async def get_generations_for_run(self, run_id: uuid.UUID) -> list[GenerationRow]:
-        stmt = select(GenerationRow).where(GenerationRow.run_id == run_id)
+        stmt = (
+            select(GenerationRow)
+            .where(GenerationRow.run_id == run_id)
+            .order_by(GenerationRow.case_id, GenerationRow.repeat_idx)
+        )
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def get_run(self, run_id: uuid.UUID) -> RunRow | None:
@@ -352,6 +357,14 @@ class RunRepository:
             .on_conflict_do_nothing(index_elements=["cache_key"])
         )
         await self.session.execute(stmt)
+
+    async def delete_cache(self, cache_keys: Sequence[str]) -> None:
+        """Drop cached responses so a subsequent run executes cold."""
+        if not cache_keys:
+            return
+        await self.session.execute(
+            delete(ResponseCacheRow).where(ResponseCacheRow.cache_key.in_(list(cache_keys)))
+        )
 
     async def get_planned_generation_count(self, run_id: uuid.UUID) -> int:
         run = await self.get_run(run_id)
@@ -375,11 +388,20 @@ class RunRepository:
             select(ScoreRow)
             .join(GenerationRow, ScoreRow.generation_id == GenerationRow.id)
             .where(GenerationRow.run_id == run_id)
+            .order_by(ScoreRow.generation_id, ScoreRow.metric_name, ScoreRow.metric_version)
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def get_metric_aggregates(self, run_id: uuid.UUID) -> list[MetricAggregateRow]:
-        stmt = select(MetricAggregateRow).where(MetricAggregateRow.run_id == run_id)
+        stmt = (
+            select(MetricAggregateRow)
+            .where(MetricAggregateRow.run_id == run_id)
+            .order_by(
+                MetricAggregateRow.metric_name,
+                MetricAggregateRow.metric_version,
+                MetricAggregateRow.slice_key,
+            )
+        )
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def generation_to_domain(self, row: GenerationRow, case_external_id: str) -> Generation:

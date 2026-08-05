@@ -31,6 +31,25 @@ from evalharness.store.repository import RunRepository
 logger = get_logger(__name__)
 
 
+def response_cache_key(
+    *,
+    provider: str,
+    resolved_version: str,
+    rendered_prompt: str,
+    decode_params: dict[str, Any],
+) -> str:
+    """Key for the shared response cache; callers that purge must use this same derivation."""
+    return sha256_canonical(
+        {
+            "provider": provider,
+            "model_version": resolved_version,
+            "prompt": rendered_prompt,
+            "decode": decode_params,
+            "adapter": f"{provider}-v1",
+        }
+    )
+
+
 def _response_from_cache(payload: dict[str, Any]) -> GenerationResponse:
     return GenerationResponse(
         text=payload["text"],
@@ -287,9 +306,7 @@ class Executor:
             elif shutdown_wait in done:
                 try:
                     results = await asyncio.wait_for(pipeline, timeout=config.drain_timeout_s)
-                    worker_failures = any(
-                        isinstance(result, BaseException) for result in results
-                    )
+                    worker_failures = any(isinstance(result, BaseException) for result in results)
                 except TimeoutError:
                     pipeline.cancel()
                     await asyncio.gather(pipeline, return_exceptions=True)
@@ -434,14 +451,11 @@ class Executor:
         trace_id: str,
     ) -> None:
         rendered = render_prompt(self.template_body, item.case)
-        cache_key = sha256_canonical(
-            {
-                "provider": self.model_version.provider,
-                "model_version": self.model_version.resolved_version,
-                "prompt": rendered,
-                "decode": config.decode_params,
-                "adapter": f"{self.model_version.provider}-v1",
-            }
+        cache_key = response_cache_key(
+            provider=self.model_version.provider,
+            resolved_version=self.model_version.resolved_version,
+            rendered_prompt=rendered,
+            decode_params=config.decode_params,
         )
 
         attempt_log: list[dict[str, Any]] = []

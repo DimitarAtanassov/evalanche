@@ -51,8 +51,8 @@
     },
     "engineering": {
       "retries": 0,
-      "cache_hits": 5,
-      "cache_rate": 1.0
+      "cache_hits": 0,
+      "cache_rate": 0.0
     }
   },
   "latency_ms": {

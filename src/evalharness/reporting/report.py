@@ -8,11 +8,11 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import plotly.graph_objects as go
+import plotly.io as pio
 from jinja2 import Environment, PackageLoader, select_autoescape
-from plotly.offline import plot as plot_html
 
 from evalharness.core.enums import FailureOutcome
 from evalharness.statistics import wilson_interval
@@ -22,6 +22,7 @@ from evalharness.store.repository import RunRepository
 
 SCHEMA_VERSION = "1.0"
 HARNESS_OUTCOMES = {FailureOutcome.HARNESS_ERROR.value, FailureOutcome.HARNESS_TIMEOUT.value}
+LATENCY_CHART_DIV_ID = "chart-latency-percentiles"
 _templates = Environment(
     loader=PackageLoader("evalharness.reporting", "templates"),
     autoescape=select_autoescape(["html"]),
@@ -75,7 +76,9 @@ async def build_report(run_id: uuid.UUID, coverage_floor: float = 0.98) -> RunRe
     harness_failures = sum(row.outcome in HARNESS_OUTCOMES for row in generations)
     covered = max(0, len(generations) - harness_failures)
     coverage = covered / planned if planned else 0.0
-    exact = [score for score in scores if score.metric_name == "exact_match" and score.passed is not None]
+    exact = [
+        score for score in scores if score.metric_name == "exact_match" and score.passed is not None
+    ]
     passed = sum(bool(score.passed) for score in exact)
     pass_rate = passed / len(exact) if exact else 0.0
     latencies = [float(row.total_ms) for row in generations if row.total_ms is not None]
@@ -104,9 +107,11 @@ async def build_report(run_id: uuid.UUID, coverage_floor: float = 0.98) -> RunRe
         publishable=coverage >= coverage_floor and len(generations) == planned,
         pass_rate=pass_rate,
         pass_rate_ci=wilson_interval(passed, len(exact)),
-        outcome_histogram=dict(Counter(row.outcome for row in generations)),
+        outcome_histogram=dict(sorted(Counter(row.outcome for row in generations).items())),
         latency=latency,
-        finish_reasons=dict(Counter(row.finish_reason or "unknown" for row in generations)),
+        finish_reasons=dict(
+            sorted(Counter(row.finish_reason or "unknown" for row in generations).items())
+        ),
         metric_aggregates=[
             {
                 "metric": row.metric_name,
@@ -147,12 +152,33 @@ def report_to_json(report: RunReport) -> dict[str, Any]:
     return payload
 
 
-def report_to_html(report: RunReport) -> str:
+def _render_chart(figure: go.Figure, div_id: str, *, inline_plotlyjs: bool) -> str:
+    """Render a figure to a div.
+
+    ``div_id`` must be supplied by the caller: plotly generates a random UUID when it is
+    omitted, which makes the HTML report non-reproducible.
+    """
+    return cast(
+        str,
+        pio.to_html(
+            figure,
+            include_plotlyjs="inline" if inline_plotlyjs else False,
+            full_html=False,
+            div_id=div_id,
+        ),
+    )
+
+
+def _latency_figure(report: RunReport) -> go.Figure:
     figure = go.Figure(
         data=[go.Bar(x=list(report.latency), y=list(report.latency.values()), name="Latency")]
     )
     figure.update_layout(title="Latency percentiles", xaxis_title="Statistic", yaxis_title="ms")
-    chart = plot_html(figure, include_plotlyjs="inline", output_type="div")
+    return figure
+
+
+def report_to_html(report: RunReport) -> str:
+    chart = _render_chart(_latency_figure(report), LATENCY_CHART_DIV_ID, inline_plotlyjs=True)
     rendered = _templates.get_template("report_v1.html.j2").render(
         report=report_to_json(report), plot=chart
     )
