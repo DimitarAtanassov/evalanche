@@ -20,3 +20,5 @@ docs/private/
 docs/private.templates/
 prompt.md
 release/
+.cursor/
+AGENTS.md
