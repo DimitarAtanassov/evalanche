@@ -1,0 +1,10 @@
+{
+  "run_id": "00000000-0000-4000-8000-0000000000c1",
+  "model_digest": "mock-digest-phase1-poc-0001",
+  "dataset": "fixtures/sample_dataset",
+  "provider": "mock",
+  "pass_rate": 1.0,
+  "coverage": 1.0,
+  "publishable": true,
+  "config_sha256": "f9c5bc7f8e2a01487dc0d99dc7710d59c5ef1ab48ce09aaf5d45511bcc12b2c6"
+}

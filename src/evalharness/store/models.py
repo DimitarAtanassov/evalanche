@@ -142,7 +142,7 @@ class GenerationRow(Base):
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     attempt_log: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     cached: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    raw_uri: Mapped[str | None] = mapped_column(Text)
+    raw_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     trace_id: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

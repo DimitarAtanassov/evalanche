@@ -20,7 +20,7 @@ from evalharness.store.db import get_engine, init_db
 
 
 @pytest.fixture(autouse=True)
-def _test_env(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+def _test_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "DATABASE_URL",
         os.getenv(
@@ -28,8 +28,6 @@ def _test_env(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
             "postgresql+asyncpg://evalharness:evalharness@localhost:5432/evalharness",
         ),
     )
-    monkeypatch.setenv("BLOB_STORAGE_BACKEND", "filesystem")
-    monkeypatch.setenv("FILESYSTEM_BLOB_ROOT", str(tmp_path / "blobs"))
     get_settings.cache_clear()
 
 

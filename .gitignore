@@ -15,3 +15,7 @@ htmlcov/
 *.html.report
 reports/
 .DS_Store
+DEFERRED.md
+docs/private/
+docs/private.templates/
+prompt.md

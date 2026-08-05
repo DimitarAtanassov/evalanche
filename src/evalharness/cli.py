@@ -1,4 +1,4 @@
-"""evalctl CLI."""
+"""evalctl — CLI for evalanche."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from evalharness.reporting.report import write_report
 from evalharness.store.db import init_db, session_scope
 from evalharness.store.repository import RunRepository
 
-app = typer.Typer(no_args_is_help=True, help="Production-grade LLM evaluation harness")
+app = typer.Typer(no_args_is_help=True, help="evalanche — reproducible LLM evaluation harness")
 console = Console()
 
 

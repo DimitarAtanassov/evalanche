@@ -27,7 +27,6 @@ from evalharness.hashing import config_hash, sha256_canonical
 from evalharness.observability import get_logger, get_tracer
 from evalharness.scoring.exact_match import ExactMatchMetric
 from evalharness.scoring.normalizer import Normalizer, NormalizerConfig
-from evalharness.store.blob import BlobStore, blob_key_for_raw, get_blob_store
 from evalharness.store.db import session_scope
 from evalharness.store.models import GenerationRow
 from evalharness.store.repository import RunRepository
@@ -128,13 +127,11 @@ class Executor:
         model: str,
         model_version: ModelVersion,
         template_body: str,
-        blob_store: BlobStore | None = None,
     ) -> None:
         self.provider = provider
         self.model = model
         self.model_version = model_version
         self.template_body = template_body
-        self.blob_store = blob_store or get_blob_store()
         self.settings = get_settings()
         self.tracer = get_tracer()
         self.shutdown = GracefulShutdown()
@@ -251,7 +248,7 @@ class Executor:
                 "model_version": self.model_version.resolved_version,
                 "prompt": rendered,
                 "decode": config.decode_params,
-                "adapter": "ollama-v1",
+                "adapter": f"{self.model_version.provider}-v1",
             }
         )
 
@@ -356,11 +353,6 @@ class Executor:
             harness_timeout=harness_timeout,
         )
 
-        raw_uri = None
-        if response and response.raw:
-            key = blob_key_for_raw(str(run_id), item.case.external_id, item.repeat_idx)
-            raw_uri = await self.blob_store.put_json(key, response.raw)
-
         async with session_scope() as session:
             repo = RunRepository(session)
             gen_id = await repo.save_generation(
@@ -380,7 +372,7 @@ class Executor:
                 attempts=len(attempt_log) or 1,
                 attempt_log=attempt_log,
                 cached=cached,
-                raw_uri=raw_uri,
+                raw_response=response.raw if response else None,
                 trace_id=trace_id,
             )
 

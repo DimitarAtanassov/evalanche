@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,18 +16,12 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="postgresql+asyncpg://evalharness:evalharness@localhost:5432/evalharness"
     )
-    blob_storage_backend: Literal["minio", "filesystem"] = "minio"
-    minio_endpoint: str = "http://localhost:9000"
-    minio_access_key: str = "minioadmin"
-    minio_secret_key: str = "minioadmin"
-    minio_bucket: str = "evalharness-blobs"
-    filesystem_blob_root: str = ".blobstore"
     ollama_base_url: str = "http://localhost:11434"
     harness_version: str = "0.1.0"
     git_sha: str = "local"
     log_level: str = "INFO"
     otel_enabled: bool = False
-    otel_service_name: str = "evalharness"
+    otel_service_name: str = "evalanche"
     default_coverage_floor: float = 0.98
     default_max_retries: int = 5
     default_retry_base_s: float = 0.5

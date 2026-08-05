@@ -23,7 +23,7 @@ def _gen(output: str) -> Generation:
         attempts=1,
         attempt_log=[],
         cached=False,
-        raw_uri=None,
+        raw_response=None,
         trace_id=None,
     )
 

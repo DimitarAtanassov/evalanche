@@ -120,7 +120,7 @@ class Generation:
     attempts: int
     attempt_log: list[dict[str, Any]]
     cached: bool
-    raw_uri: str | None
+    raw_response: dict[str, Any] | None
     trace_id: str | None
 
 

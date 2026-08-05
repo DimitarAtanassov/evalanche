@@ -33,7 +33,7 @@ def test_golden_exact_match_and_wilson() -> None:
         attempts=1,
         attempt_log=[],
         cached=False,
-        raw_uri=None,
+        raw_response=None,
         trace_id=None,
     )
     score = metric.score(gen, case, ScoringContext(normalizer_id=metric.normalizer.config_id))[0]

@@ -211,7 +211,7 @@ class RunRepository:
         attempts: int,
         attempt_log: list[dict[str, Any]],
         cached: bool,
-        raw_uri: str | None,
+        raw_response: dict[str, Any] | None,
         trace_id: str | None,
     ) -> int:
         row = GenerationRow(
@@ -231,7 +231,7 @@ class RunRepository:
             attempts=attempts,
             attempt_log=attempt_log,
             cached=cached,
-            raw_uri=raw_uri,
+            raw_response=raw_response,
             trace_id=trace_id,
         )
         self.session.add(row)
@@ -339,6 +339,6 @@ class RunRepository:
             attempts=row.attempts,
             attempt_log=list(row.attempt_log) if isinstance(row.attempt_log, list) else [],
             cached=row.cached,
-            raw_uri=row.raw_uri,
+            raw_response=row.raw_response,
             trace_id=row.trace_id,
         )

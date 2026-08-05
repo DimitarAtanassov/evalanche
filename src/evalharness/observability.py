@@ -47,7 +47,7 @@ def setup_otel() -> Tracer:
         _span_exporter = InMemorySpanExporter()
         provider.add_span_processor(SimpleSpanProcessor(_span_exporter))
     trace.set_tracer_provider(provider)
-    _tracer = trace.get_tracer("evalharness")
+    _tracer = trace.get_tracer("evalanche")
     return _tracer
 
 

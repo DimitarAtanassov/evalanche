@@ -83,6 +83,7 @@ async def test_resume_produces_same_outputs(db_ready) -> None:
         all_pairs = {(g.case_id, g.repeat_idx, g.output) for g in all_gens}
         assert len(all_gens) == len(bundle.cases)
         assert partial_pairs.issubset(all_pairs)
+        assert all(g.raw_response and g.raw_response["mock"] is True for g in all_gens)
 
     report = await build_report(run_id, coverage_floor=0.0)
     assert report.config_sha256
