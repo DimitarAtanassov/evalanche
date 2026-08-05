@@ -1,6 +1,6 @@
 # evalanche
 
-Reproducible, resumable LLM evaluation harness. The **`evalctl`** CLI validates datasets, runs digest-pinned evaluations against Ollama (or an offline mock), stores immutable generations in PostgreSQL, scores with versioned exact match, and emits statistically honest JSON/HTML reports.
+Reproducible, resumable LLM evaluation harness. The **`evalctl`** CLI validates datasets, runs digest-pinned evaluations, stores immutable generations in PostgreSQL, rescoring them through a versioned metric catalog, and emits statistically honest JSON/HTML/JUnit reports.
 
 > Generation and scoring are separate stages. You generate once; you score many times.
 
@@ -9,12 +9,14 @@ Reproducible, resumable LLM evaluation harness. The **`evalctl`** CLI validates 
 | Capability | Available |
 |------------|-----------|
 | Dataset validate + holdout guard | Yes |
-| Ollama provider (digest-pinned) | Yes |
+| Ollama + OpenAI-compatible providers (revision-pinned) | Yes |
 | Mock provider (CI / PoC) | Yes |
-| Resumable async executor | Yes |
-| Exact match + Wilson CI | Yes |
-| Latency percentiles + outcome taxonomy | Yes |
-| Hosted providers / full metrics / judge / HTTP API | Not yet |
+| Bounded resumable executor, limiter, breaker, deadlines | Yes |
+| Lexical, structured, classification, calibration, retrieval, overlap metrics | Yes |
+| Zero-generation score/rescore | Yes |
+| Paired comparison, BCa/Wilson/McNemar/BH, power, pass@k | Yes |
+| JSON + self-contained HTML + JUnit analytical reports | Yes |
+| Optional BERTScore ML extra | Yes |
 
 ## Docs
 
@@ -39,7 +41,7 @@ docker compose up -d postgres
 uv sync --all-extras
 cp .env.example .env
 
-uv run python -c "import asyncio; from evalharness.store.db import init_db; asyncio.run(init_db())"
+uv run alembic upgrade head
 
 # Validate sample dataset
 uv run evalctl dataset-validate fixtures/sample_dataset

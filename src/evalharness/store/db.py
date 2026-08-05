@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import contextlib
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from sqlalchemy import text
+from alembic.config import Config
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -14,8 +15,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from alembic import command
 from evalharness.config import get_settings
-from evalharness.store.models import Base
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -37,11 +38,12 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 
 async def init_db() -> None:
-    engine = get_engine()
-    async with engine.begin() as conn:
-        with contextlib.suppress(Exception):
-            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-        await conn.run_sync(Base.metadata.create_all)
+    """Upgrade the database through Alembic; runtime code never owns schema creation."""
+    root = Path(__file__).resolve().parents[3]
+    config = Config(root / "alembic.ini")
+    config.set_main_option("script_location", str(root / "alembic"))
+    config.set_main_option("sqlalchemy.url", get_settings().database_url)
+    await asyncio.to_thread(command.upgrade, config, "head")
 
 
 @asynccontextmanager

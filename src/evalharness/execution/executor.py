@@ -6,11 +6,11 @@ import asyncio
 import random
 import signal
 import uuid
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import update
+import httpx
 
 from evalharness.config import get_settings
 from evalharness.core.enums import ErrorClass, FailureOutcome, FinishReason
@@ -20,15 +20,12 @@ from evalharness.core.models import (
     GenerationResponse,
     Message,
     ModelVersion,
-    ScoringContext,
+    ToolCall,
 )
 from evalharness.core.protocols import Provider
 from evalharness.hashing import config_hash, sha256_canonical
 from evalharness.observability import get_logger, get_tracer
-from evalharness.scoring.exact_match import ExactMatchMetric
-from evalharness.scoring.normalizer import Normalizer, NormalizerConfig
 from evalharness.store.db import session_scope
-from evalharness.store.models import GenerationRow
 from evalharness.store.repository import RunRepository
 
 logger = get_logger(__name__)
@@ -37,7 +34,7 @@ logger = get_logger(__name__)
 def _response_from_cache(payload: dict[str, Any]) -> GenerationResponse:
     return GenerationResponse(
         text=payload["text"],
-        tool_calls=[],
+        tool_calls=[ToolCall(**call) for call in payload.get("tool_calls", [])],
         finish_reason=FinishReason(payload["finish_reason"]),
         prompt_tokens=payload.get("prompt_tokens"),
         completion_tokens=payload.get("completion_tokens"),
@@ -66,13 +63,20 @@ class RunConfig:
     concurrency: int
     case_timeout_s: float
     request_timeout_s: float
+    run_timeout_s: float
+    drain_timeout_s: float
     max_retries: int
     coverage_floor: float
 
 
 class GracefulShutdown:
     def __init__(self) -> None:
-        self.requested = False
+        self.event = asyncio.Event()
+        self.reason: str | None = None
+
+    @property
+    def requested(self) -> bool:
+        return self.event.is_set()
 
     def install(self) -> None:
         loop = asyncio.get_running_loop()
@@ -80,7 +84,13 @@ class GracefulShutdown:
             loop.add_signal_handler(sig, self._handle)
 
     def _handle(self) -> None:
-        self.requested = True
+        self.request("signal")
+
+    def request(self, reason: str) -> None:
+        if self.event.is_set():
+            return
+        self.reason = reason
+        self.event.set()
         logger.info("shutdown_requested")
 
 
@@ -118,6 +128,23 @@ def classify_outcome(
 async def _retry_delay(attempt: int, base: float, cap: float) -> float:
     exp = min(cap, base * (2**attempt))
     return random.uniform(0, exp)
+
+
+def _retry_after_seconds(exc: Exception) -> float | None:
+    response = getattr(exc, "response", None)
+    if response is None:
+        return None
+    value = response.headers.get("Retry-After")
+    if value is None:
+        return None
+    try:
+        return max(0.0, float(value))
+    except ValueError:
+        try:
+            retry_at = datetime.strptime(value, "%a, %d %b %Y %H:%M:%S GMT").replace(tzinfo=UTC)
+        except ValueError:
+            return None
+        return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
 
 
 class Executor:
@@ -200,39 +227,204 @@ class Executor:
                 concurrency=self.settings.default_concurrency,
                 case_timeout_s=self.settings.default_case_timeout_s,
                 request_timeout_s=self.settings.default_request_timeout_s,
+                run_timeout_s=self.settings.default_run_timeout_s,
+                drain_timeout_s=self.settings.default_shutdown_drain_timeout_s,
                 max_retries=self.settings.default_max_retries,
                 coverage_floor=self.settings.default_coverage_floor,
             )
             return config, items
 
+    async def validate_resume(
+        self,
+        run_id: uuid.UUID,
+        *,
+        dataset_id: int,
+        prompt_template_id: int,
+        model_version_id: int,
+        decode_params: dict[str, Any],
+        repeats: int,
+        tenant_id: str,
+    ) -> None:
+        """Refuse a resume when any generation-affecting input changed."""
+        async with session_scope() as session:
+            run = await RunRepository(session).get_run(run_id)
+            if run is None:
+                raise ValueError(f"Run not found: {run_id}")
+            expected = {
+                "dataset_id": dataset_id,
+                "prompt_template_id": prompt_template_id,
+                "model_version_id": model_version_id,
+                "decode_params": decode_params,
+                "repeats": repeats,
+                "tenant_id": tenant_id,
+            }
+            actual = {key: getattr(run, key) for key in expected}
+            mismatches = [key for key in expected if actual[key] != expected[key]]
+            if mismatches:
+                raise ValueError(
+                    "Resume configuration mismatch for: " + ", ".join(sorted(mismatches))
+                )
+
     async def execute_run(self, run_id: uuid.UUID, concurrency: int | None = None) -> None:
         self.shutdown.install()
         config, items = await self.plan(run_id)
-        sem = asyncio.Semaphore(concurrency or config.concurrency)
-        tasks = [self._run_one(run_id, config, item, sem) for item in items]
-        await asyncio.gather(*tasks)
+        worker_count = max(1, concurrency or config.concurrency)
+        pipeline = asyncio.create_task(
+            self._run_worker_pool(run_id, config, items, worker_count),
+            name=f"run-{run_id}-pipeline",
+        )
+        shutdown_wait = asyncio.create_task(self.shutdown.event.wait(), name="shutdown-wait")
+        worker_failures = False
+        try:
+            done, _ = await asyncio.wait(
+                {pipeline, shutdown_wait},
+                timeout=config.run_timeout_s,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if pipeline in done:
+                results = await pipeline
+                worker_failures = any(isinstance(result, BaseException) for result in results)
+            elif shutdown_wait in done:
+                try:
+                    results = await asyncio.wait_for(pipeline, timeout=config.drain_timeout_s)
+                    worker_failures = any(
+                        isinstance(result, BaseException) for result in results
+                    )
+                except TimeoutError:
+                    pipeline.cancel()
+                    await asyncio.gather(pipeline, return_exceptions=True)
+            else:
+                self.shutdown.request("run_deadline")
+                pipeline.cancel()
+                await asyncio.gather(pipeline, return_exceptions=True)
+        finally:
+            shutdown_wait.cancel()
+            await asyncio.gather(shutdown_wait, return_exceptions=True)
+
         async with session_scope() as session:
             repo = RunRepository(session)
-            await repo.update_run_status(run_id, "completed")
+            remaining = len((await self.plan(run_id))[1])
+            if remaining == 0 and not worker_failures:
+                status = "completed"
+            elif self.shutdown.requested:
+                status = "cancelled"
+            else:
+                status = "failed"
+            await repo.update_run_status(run_id, status)
+
+    async def _run_worker_pool(
+        self,
+        run_id: uuid.UUID,
+        config: RunConfig,
+        items: list[RunPlanItem],
+        worker_count: int,
+    ) -> list[Any]:
+        queue: asyncio.Queue[RunPlanItem | None] = asyncio.Queue(maxsize=worker_count * 2)
+
+        async def produce() -> None:
+            for item in items:
+                if self.shutdown.requested:
+                    break
+                await queue.put(item)
+            for _ in range(worker_count):
+                await queue.put(None)
+
+        async def worker() -> None:
+            while True:
+                item = await queue.get()
+                try:
+                    if item is None:
+                        return
+                    await self._run_one(run_id, config, item)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception(
+                        "case_worker_failed",
+                        run_id=str(run_id),
+                        case_id=item.case_db_id if item else None,
+                    )
+                finally:
+                    queue.task_done()
+
+        producer = asyncio.create_task(produce(), name=f"run-{run_id}-producer")
+        workers = [
+            asyncio.create_task(worker(), name=f"run-{run_id}-worker-{idx}")
+            for idx in range(worker_count)
+        ]
+        return await asyncio.gather(producer, *workers, return_exceptions=True)
 
     async def _run_one(
         self,
         run_id: uuid.UUID,
         config: RunConfig,
         item: RunPlanItem,
-        sem: asyncio.Semaphore,
+        sem: asyncio.Semaphore | None = None,
     ) -> None:
         if self.shutdown.requested:
             return
-        async with sem:
+        if sem is not None:
+            await sem.acquire()
+        try:
             with self.tracer.start_as_current_span("case") as span:
                 span.set_attribute("gen_ai.request.model", self.model)
                 span.set_attribute("case.external_id", item.case.external_id)
                 trace_id = format(span.get_span_context().trace_id, "032x")
-                await asyncio.wait_for(
-                    self._execute_case(run_id, config, item, trace_id),
-                    timeout=config.case_timeout_s,
-                )
+                try:
+                    await asyncio.wait_for(
+                        self._execute_case(run_id, config, item, trace_id),
+                        timeout=config.case_timeout_s,
+                    )
+                except TimeoutError:
+                    await self._save_terminal_failure(
+                        run_id,
+                        item,
+                        FailureOutcome.HARNESS_TIMEOUT,
+                        trace_id,
+                        "case_timeout",
+                    )
+                except Exception as exc:
+                    logger.exception("case_execution_failed", case_id=item.case_db_id)
+                    await self._save_terminal_failure(
+                        run_id,
+                        item,
+                        FailureOutcome.HARNESS_ERROR,
+                        trace_id,
+                        type(exc).__name__,
+                    )
+        finally:
+            if sem is not None:
+                sem.release()
+
+    async def _save_terminal_failure(
+        self,
+        run_id: uuid.UUID,
+        item: RunPlanItem,
+        outcome: FailureOutcome,
+        trace_id: str,
+        reason: str,
+    ) -> None:
+        async with session_scope() as session:
+            await RunRepository(session).save_generation(
+                run_id=run_id,
+                case_id=item.case_db_id,
+                repeat_idx=item.repeat_idx,
+                output=None,
+                tool_calls=[],
+                finish_reason=None,
+                outcome=outcome,
+                prompt_tokens=None,
+                completion_tokens=None,
+                cost_usd=0.0,
+                ttft_ms=None,
+                total_ms=None,
+                queue_wait_ms=None,
+                attempts=1,
+                attempt_log=[{"attempt": 1, "error_class": reason}],
+                cached=False,
+                raw_response=None,
+                trace_id=trace_id,
+            )
 
     async def _execute_case(
         self,
@@ -257,13 +449,15 @@ class Executor:
         response = None
         harness_error = False
         harness_timeout = False
+        cache_enabled = float(config.decode_params.get("temperature", 0.0)) == 0.0
 
-        async with session_scope() as session:
-            repo = RunRepository(session)
-            cached_payload = await repo.get_cache(cache_key)
-            if cached_payload:
-                cached = True
-                response = _response_from_cache(cached_payload)
+        if cache_enabled:
+            async with session_scope() as session:
+                repo = RunRepository(session)
+                cached_payload = await repo.get_cache(cache_key)
+                if cached_payload:
+                    cached = True
+                    response = _response_from_cache(cached_payload)
 
         if response is None:
             messages = [Message(role="user", content=rendered)]
@@ -283,7 +477,10 @@ class Executor:
                 start = datetime.now(UTC)
                 try:
                     with self.tracer.start_as_current_span("provider.call"):
-                        response = await self.provider.generate(self.model, req)
+                        response = await asyncio.wait_for(
+                            self.provider.generate(self.model, req),
+                            timeout=config.request_timeout_s,
+                        )
                     attempt_log.append(
                         {
                             "attempt": attempt + 1,
@@ -292,31 +489,33 @@ class Executor:
                             "at": start.isoformat(),
                         }
                     )
-                    async with session_scope() as session:
-                        repo = RunRepository(session)
-                        await repo.put_cache(
-                            cache_key,
-                            {
-                                "text": response.text,
-                                "tool_calls": [],
-                                "finish_reason": response.finish_reason.value,
-                                "prompt_tokens": response.prompt_tokens,
-                                "completion_tokens": response.completion_tokens,
-                                "logprobs": None,
-                                "ttft_ms": response.ttft_ms,
-                                "total_ms": response.total_ms,
-                                "raw": response.raw,
-                            },
-                        )
+                    if cache_enabled:
+                        async with session_scope() as session:
+                            repo = RunRepository(session)
+                            await repo.put_cache(
+                                cache_key,
+                                {
+                                    "text": response.text,
+                                    "tool_calls": [asdict(call) for call in response.tool_calls],
+                                    "finish_reason": response.finish_reason.value,
+                                    "prompt_tokens": response.prompt_tokens,
+                                    "completion_tokens": response.completion_tokens,
+                                    "logprobs": None,
+                                    "ttft_ms": response.ttft_ms,
+                                    "total_ms": response.total_ms,
+                                    "raw": response.raw,
+                                },
+                            )
                     break
-                except TimeoutError:
+                except (TimeoutError, httpx.TimeoutException) as exc:
                     harness_timeout = True
                     attempt_log.append(
                         {
                             "attempt": attempt + 1,
-                            "error_class": ErrorClass.RETRYABLE_TRANSIENT.value,
+                            "error_class": "timeout",
                             "duration_ms": None,
                             "at": start.isoformat(),
+                            "message": str(exc),
                         }
                     )
                     break
@@ -338,11 +537,13 @@ class Executor:
                         harness_error = True
                         break
                     if attempt < config.max_retries:
-                        await _retry_delay(
+                        jitter = await _retry_delay(
                             attempt,
                             self.settings.default_retry_base_s,
                             self.settings.default_retry_cap_s,
                         )
+                        retry_after = _retry_after_seconds(exc)
+                        await asyncio.sleep(max(jitter, retry_after or 0.0))
                     else:
                         harness_error = True
 
@@ -355,12 +556,12 @@ class Executor:
 
         async with session_scope() as session:
             repo = RunRepository(session)
-            gen_id = await repo.save_generation(
+            await repo.save_generation(
                 run_id=run_id,
                 case_id=item.case_db_id,
                 repeat_idx=item.repeat_idx,
                 output=response.text if response else None,
-                tool_calls=[],
+                tool_calls=[asdict(call) for call in response.tool_calls] if response else [],
                 finish_reason=response.finish_reason if response else None,
                 outcome=outcome,
                 prompt_tokens=response.prompt_tokens if response else None,
@@ -368,39 +569,12 @@ class Executor:
                 cost_usd=0.0,
                 ttft_ms=response.ttft_ms if response else None,
                 total_ms=response.total_ms if response else None,
-                queue_wait_ms=None,
+                queue_wait_ms=(response.raw.get("runtime") or {}).get("queue_wait_ms")
+                if response
+                else None,
                 attempts=len(attempt_log) or 1,
                 attempt_log=attempt_log,
                 cached=cached,
                 raw_response=response.raw if response else None,
                 trace_id=trace_id,
             )
-
-            if response and outcome not in (
-                FailureOutcome.HARNESS_ERROR,
-                FailureOutcome.HARNESS_TIMEOUT,
-            ):
-                gen_row = await session.get(GenerationRow, gen_id)
-                if gen_row is None:
-                    return
-                gen = await repo.generation_to_domain(gen_row, item.case.external_id)
-                normalizer = Normalizer(NormalizerConfig())
-                metric = ExactMatchMetric(normalizer)
-                ctx = ScoringContext(normalizer_id=normalizer.config_id)
-                scores = metric.score(gen, item.case, ctx)
-                for score in scores:
-                    if outcome == FailureOutcome.PASSED and score.passed is False:
-                        await session.execute(
-                            update(GenerationRow)
-                            .where(GenerationRow.id == gen_id)
-                            .values(outcome=FailureOutcome.FAILED_SCORE.value)
-                        )
-                    await repo.save_score(
-                        generation_id=gen_id,
-                        metric_name=score.metric_name,
-                        metric_version=score.metric_version,
-                        metric_config_sha256=score.metric_config_sha256,
-                        value=score.value,
-                        passed=score.passed,
-                        detail=score.detail,
-                    )

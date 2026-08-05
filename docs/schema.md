@@ -1,6 +1,14 @@
 # Database schema
 
-PostgreSQL 16 + `pgvector`. Tables are created via SQLAlchemy metadata (`init_db`) with Alembic revisions for evolution.
+PostgreSQL 16 + `pgvector`. Alembic is the sole schema owner; `init_db()` runs
+`alembic upgrade head` and never invokes runtime `create_all`. The forward
+baseline supports clean databases and upgrades from the former runtime schema.
+Checkpoint, cache, score, and aggregate writes are idempotent; aggregate
+identity includes the metric configuration hash.
+
+Generation partitioning is deliberately deferred. When table size requires it,
+use a staged shadow-table, dual-write, backfill, validate, and swap migration;
+never silently rewrite a live generations table.
 
 Raw provider payloads live in **`generations.raw_response` (JSONB)** — not object storage. Revisit triggers are local-only (`DEFERRED.md`).
 

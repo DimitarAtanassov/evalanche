@@ -17,6 +17,9 @@ class Settings(BaseSettings):
         default="postgresql+asyncpg://evalharness:evalharness@localhost:5432/evalharness"
     )
     ollama_base_url: str = "http://localhost:11434"
+    openai_compatible_base_url: str | None = None
+    openai_compatible_api_key: str | None = None
+    openai_compatible_model_revision: str | None = None
     harness_version: str = "0.1.0"
     git_sha: str = "local"
     log_level: str = "INFO"
@@ -29,6 +32,8 @@ class Settings(BaseSettings):
     default_concurrency: int = 2
     default_case_timeout_s: float = 120.0
     default_request_timeout_s: float = 60.0
+    default_run_timeout_s: float = 14_400.0
+    default_shutdown_drain_timeout_s: float = 30.0
 
 
 @lru_cache

@@ -21,6 +21,7 @@ from evalharness.hashing import sha256_hex
 from evalharness.observability import setup_logging, setup_otel
 from evalharness.providers.mock import MOCK_DIGEST, MockProvider
 from evalharness.reporting.report import report_to_html, report_to_json, write_report
+from evalharness.scoring.engine import ScoringEngine
 from evalharness.store.db import init_db, session_scope
 from evalharness.store.models import GenerationRow, MetricAggregateRow, RunRow, ScoreRow
 from evalharness.store.repository import RunRepository
@@ -110,6 +111,7 @@ async def run_poc(*, output_dir: Path) -> Path:
         run_id=FIXED_RUN_ID,
     )
     await executor.execute_run(run_id, concurrency=2)
+    await ScoringEngine().rescore_run(run_id, ["exact_match"])
 
     output_dir.mkdir(parents=True, exist_ok=True)
     report = await write_report(run_id, output_dir, coverage_floor=0.98)

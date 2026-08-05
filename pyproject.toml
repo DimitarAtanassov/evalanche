@@ -11,13 +11,22 @@ dependencies = [
     "asyncpg>=0.30.0",
     "httpx>=0.28.0",
     "jinja2>=3.1.4",
+    "jsonschema>=4.23.0",
+    "nltk>=3.9.1",
+    "numpy>=2.1.0",
     "opentelemetry-api>=1.29.0",
     "opentelemetry-sdk>=1.29.0",
     "opentelemetry-instrumentation-httpx>=0.50b0",
     "pgvector>=0.3.6",
+    "plotly>=6.0.0",
     "pydantic>=2.10.0",
     "pydantic-settings>=2.6.0",
     "pyyaml>=6.0.2",
+    "rapidfuzz>=3.10.0",
+    "rouge-score>=0.1.2",
+    "sacrebleu>=2.5.0",
+    "scikit-learn>=1.6.0",
+    "scipy>=1.14.0",
     "sqlalchemy[asyncio]>=2.0.36",
     "structlog>=24.4.0",
     "typer>=0.15.0",
@@ -30,8 +39,15 @@ dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
+    "hypothesis>=6.120.0",
+    "respx>=0.22.0",
     "ruff>=0.8.0",
     "types-pyyaml>=6.0.12",
+]
+metrics-ml = [
+    "bert-score>=0.3.13",
+    "torch>=2.5.0",
+    "transformers>=4.47.0",
 ]
 
 [project.scripts]
@@ -39,7 +55,12 @@ evalctl = "evalharness.cli:app"
 
 [project.entry-points."evalharness.providers"]
 ollama = "evalharness.providers.ollama:OllamaProvider"
+openai_compatible = "evalharness.providers.openai_compatible:OpenAICompatibleProvider"
 mock = "evalharness.providers.mock:MockProvider"
+
+[project.entry-points."evalharness.metrics"]
+exact_match = "evalharness.scoring.exact_match:ExactMatchMetric"
+bertscore = "evalharness.scoring.ml:BERTScoreMetric"
 
 [build-system]
 requires = ["hatchling"]
@@ -62,7 +83,16 @@ strict = true
 packages = ["evalharness"]
 
 [[tool.mypy.overrides]]
-module = ["pgvector.*"]
+module = [
+    "jsonschema.*",
+    "bert_score.*",
+    "nltk.*",
+    "pgvector.*",
+    "plotly.*",
+    "rouge_score.*",
+    "scipy.*",
+    "sklearn.*",
+]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
