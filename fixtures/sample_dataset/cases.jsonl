@@ -1,0 +1,5 @@
+{"id": "case-00000", "task_type": "qa_short", "inputs": {"question": "What is 0 plus one?"}, "reference_answer": "1", "slices": {"difficulty": "easy", "lang": "en"}, "weight": 1.0}
+{"id": "case-00001", "task_type": "qa_short", "inputs": {"question": "What is 1 plus one?"}, "reference_answer": "2", "slices": {"difficulty": "hard", "lang": "en"}, "weight": 1.0}
+{"id": "case-00002", "task_type": "qa_short", "inputs": {"question": "What is 2 plus one?"}, "reference_answer": "3", "slices": {"difficulty": "easy", "lang": "en"}, "weight": 1.0}
+{"id": "case-00003", "task_type": "qa_short", "inputs": {"question": "What is 3 plus one?"}, "reference_answer": "4", "slices": {"difficulty": "hard", "lang": "en"}, "weight": 1.0}
+{"id": "case-00004", "task_type": "qa_short", "inputs": {"question": "What is 4 plus one?"}, "reference_answer": "5", "slices": {"difficulty": "easy", "lang": "en"}, "weight": 1.0}

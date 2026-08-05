@@ -1,0 +1,10 @@
+content_sha256: c3dbdeaf2ef697ad3fcbddd314759c652ffdcb624d13f5177fea639240a6681a
+created_at: '2026-08-05'
+license: CC0-1.0
+name: synthetic-qa
+pii_scrubbed: true
+slices:
+- difficulty
+- lang
+split: dev
+version: 1.0.0
