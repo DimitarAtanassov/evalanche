@@ -3,11 +3,13 @@
 ## Purpose
 
 This document explains **what evalanche measures, why each metric exists, and how the
-metrics compose** into an honest verdict. It is the conceptual map; the exact formulas,
-ranges, thresholds, gotchas, and aggregation methods live in
+metrics compose** into an honest verdict. It is the conceptual map. For the deep
+drill‑down — beginner‑friendly intuition, formulas, edge cases, registered names/versions,
+and code links — go to the **[metrics catalog](metrics-catalog/README.md)** (one
+subdirectory per family). The compact formula/threshold reference also lives in
 [guide.md §6](guide.md#6-metric-catalog--statistics), and the statistics are detailed in
-[guide.md §6.7](guide.md#67-statistics-package). Read this first to know *which* metric
-to reach for; follow the links when you need the math.
+[guide.md §6.7](guide.md#67-statistics-package). Read this first to know *which* metric to
+reach for; follow the catalog when you need the math.
 
 ## The mental model
 
@@ -43,17 +45,17 @@ Metrics fall into families that answer different questions. A good evaluation co
 several: a cheap deterministic tripwire, a task‑appropriate quality metric, and honest
 statistics around the comparison.
 
-| Family | Question it answers | Metrics (registry name) | Reach for it when… |
-|--------|---------------------|-------------------------|--------------------|
-| **Lexical / deterministic** | "Does the text match the reference exactly or almost?" | `exact_match`, `squad_f1`, `normalized_levenshtein` | Short‑form QA with canonical answers; fast regression gates |
-| **Assertions** | "Does the output contain / avoid required content?" | `assertions`, `numeric_assertion` | Content constraints, safety denylists, numeric answers |
-| **Structured** | "Is the output valid, schema‑correct JSON with the right fields?" | `json_validity`, `json_field_f1` | Extraction and tool‑use tasks |
-| **Classification** | "How good are the predicted labels, accounting for imbalance?" | `classification` | Label tasks (report MCC / balanced accuracy, not just accuracy) |
-| **Calibration** | "Does the model know when it doesn't know?" | `calibration.py` helpers, `evalctl calibrate` | You have confidences/logprobs and care about selective prediction |
-| **Retrieval / ranking** | "Are the right documents ranked highly?" | `retrieval_ndcg_10` | Retrieval / RAG with graded `qrels` |
-| **Overlap** | "How much surface content is shared with the reference?" | `rouge_l`, `sacrebleu`, `chrf_pp`, `meteor`, `bertscore_f1` (extra) | Summarization / translation regression tripwires |
-| **Semantic similarity** | "Is the meaning close, beyond exact wording?" | `scoring/embeddings.py` (`EmbeddingService`) | Paraphrase‑tolerant QA / semantic checks with a calibrated threshold |
-| **Statistics** | "Is the difference real, or noise?" | `statistics/` (Wilson, BCa, McNemar, BH, Cohen's h, pass@k, power) | Every published number and every A/B comparison |
+| Family | Question it answers | Metrics (registry name) | Reach for it when… | Deep dive |
+|--------|---------------------|-------------------------|--------------------|-----------|
+| **Lexical / deterministic** | "Does the text match the reference exactly or almost?" | `exact_match`, `squad_f1`, `normalized_levenshtein` | Short‑form QA with canonical answers; fast regression gates | [lexical-structured/](metrics-catalog/lexical-structured/README.md) |
+| **Assertions** | "Does the output contain / avoid required content?" | `assertions`, `numeric_assertion` | Content constraints, safety denylists, numeric answers | [lexical-structured/](metrics-catalog/lexical-structured/README.md) |
+| **Structured** | "Is the output valid, schema‑correct JSON with the right fields?" | `json_validity`, `json_field_f1` | Extraction and tool‑use tasks | [lexical-structured/](metrics-catalog/lexical-structured/README.md) |
+| **Classification** | "How good are the predicted labels, accounting for imbalance?" | `classification` | Label tasks (report MCC / balanced accuracy, not just accuracy) | [classification/](metrics-catalog/classification/README.md) |
+| **Calibration** | "Does the model know when it doesn't know?" | `calibration.py` helpers, `evalctl calibrate` | You have confidences/logprobs and care about selective prediction | [calibration/](metrics-catalog/calibration/README.md) |
+| **Retrieval / ranking** | "Are the right documents ranked highly?" | `retrieval_ndcg_10` | Retrieval / RAG with graded `qrels` | [retrieval-ranking/](metrics-catalog/retrieval-ranking/README.md) |
+| **Overlap** | "How much surface content is shared with the reference?" | `rouge_l`, `sacrebleu`, `chrf_pp`, `meteor`, `bertscore_f1` (extra) | Summarization / translation regression tripwires | [text-overlap/](metrics-catalog/text-overlap/README.md) |
+| **Semantic similarity** | "Is the meaning close, beyond exact wording?" | `scoring/embeddings.py` (`EmbeddingService`) | Paraphrase‑tolerant QA / semantic checks with a calibrated threshold | [semantic-similarity/](metrics-catalog/semantic-similarity/README.md) |
+| **Statistics** | "Is the difference real, or noise?" | `statistics/` (Wilson, BCa, McNemar, BH, Cohen's h, pass@k, power) | Every published number and every A/B comparison | [statistics/](metrics-catalog/statistics/README.md) |
 
 ## Lexical / deterministic
 
@@ -64,6 +66,7 @@ with a Wilson 95% CI**. `squad_f1` relaxes to token‑overlap F1 for paraphrase 
 `normalized_levenshtein` handles near‑copies and OCR‑ish noise with a calibrated
 threshold. *Gotcha:* over‑normalizing hides real errors; the normalizer ruleset is
 hashed into every score so changes are auditable, not silent. Full detail:
+[metrics-catalog/lexical-structured/](metrics-catalog/lexical-structured/README.md),
 [guide.md §6.1](guide.md#61-deterministic--lexical).
 
 ## Assertions
@@ -71,7 +74,9 @@ hashed into every score so changes are auditable, not silent. Full detail:
 `assertions` checks `must_contain` / `must_not_contain` term presence;
 `numeric_assertion` extracts numbers and compares them within tolerance. These are
 constraint checks, not quality scores — ideal for safety smoke tests and answers with a
-required numeric value. Detail: [guide.md §6.1](guide.md#61-deterministic--lexical).
+required numeric value. Detail:
+[metrics-catalog/lexical-structured/](metrics-catalog/lexical-structured/README.md),
+[guide.md §6.1](guide.md#61-deterministic--lexical).
 
 ## Structured
 
@@ -79,7 +84,8 @@ required numeric value. Detail: [guide.md §6.1](guide.md#61-deterministic--lexi
 `inputs.json_schema`); `json_field_f1` flattens nested objects/arrays and computes
 per‑key precision/recall/F1 against `expected_json`. Use both together on extraction
 tasks: validity tells you *whether* it parsed, field‑F1 tells you *how right* it was.
-Detail: [guide.md §6.1](guide.md#61-deterministic--lexical).
+Detail: [metrics-catalog/lexical-structured/](metrics-catalog/lexical-structured/README.md),
+[guide.md §6.1](guide.md#61-deterministic--lexical).
 
 ## Classification
 
@@ -87,7 +93,9 @@ Detail: [guide.md §6.1](guide.md#61-deterministic--lexical).
 value is: accuracy with a Wilson CI plus a detail payload carrying balanced accuracy,
 macro/micro/weighted F1, **Matthews correlation coefficient**, and Cohen's κ. Prefer MCC
 and balanced accuracy under class imbalance — raw accuracy flatters a model that always
-predicts the majority class. Detail: [guide.md §6.2](guide.md#62-classification).
+predicts the majority class. Detail:
+[metrics-catalog/classification/](metrics-catalog/classification/README.md),
+[guide.md §6.2](guide.md#62-classification).
 
 ## Calibration
 
@@ -97,6 +105,7 @@ Brier score, NLL, a risk–coverage curve, AURC, accuracy at 80% coverage, and R
 AUC; `evalctl calibrate` fits an operating threshold on **development** data and reports
 ROC‑AUC / PR‑AUC / dev F1. Never fit thresholds on holdout. This family needs real
 confidences (logprobs or elicited) — skip it rather than invent them. Detail:
+[metrics-catalog/calibration/](metrics-catalog/calibration/README.md),
 [guide.md §6.3](guide.md#63-calibration-helpers-not-registry-metrics).
 
 ## Retrieval / ranking
@@ -106,6 +115,7 @@ confidences (logprobs or elicited) — skip it rather than invent them. Detail:
 {1,3,5,10,20}). It uses the **exponential‑gain** DCG form — state that in reports,
 because the linear‑gain variant gives different numbers and is a classic source of
 cross‑team disagreement. Zero‑relevance queries are excluded, not scored as 0. Detail:
+[metrics-catalog/retrieval-ranking/](metrics-catalog/retrieval-ranking/README.md),
 [guide.md §6.4](guide.md#64-ranking--retrieval).
 
 ## Overlap (summarization / translation)
@@ -116,6 +126,7 @@ much surface content a generation shares with a reference. Two honesty rules: re
 plainly that these metrics **correlate weakly with human judgment on abstractive
 tasks** — treat them as regression tripwires, not quality verdicts. `bertscore_f1` lives
 behind the `metrics-ml` extra because it pulls heavy model weights. Detail:
+[metrics-catalog/text-overlap/](metrics-catalog/text-overlap/README.md),
 [guide.md §6.5](guide.md#65-summarization--generation-overlap).
 
 ## Semantic similarity
@@ -126,7 +137,8 @@ and offers max‑reference and asymmetric‑centroid variants. Cosine has no abs
 meaning on its own — pick the operating threshold on **dev** via `evalctl calibrate` and
 report ROC‑AUC, not a magic `0.8`. Note there is no registered `semantic_similarity`
 metric today; the release evidence script writes those scores explicitly with BCa CIs.
-Detail: [guide.md §6.6](guide.md#66-semantic-similarity-embeddings).
+Detail: [metrics-catalog/semantic-similarity/](metrics-catalog/semantic-similarity/README.md),
+[guide.md §6.6](guide.md#66-semantic-similarity-embeddings).
 
 ## Statistics: honest comparison
 
@@ -149,7 +161,8 @@ Metrics produce point estimates; statistics decide whether a difference is real.
 
 The recurring theme is [principle #4](principles.md): **no point estimate without an
 interval.** Small `n` yields honestly wide intervals — widen the dataset, don't shrink
-the CI. Detail: [guide.md §6.7](guide.md#67-statistics-package).
+the CI. Detail: [metrics-catalog/statistics/](metrics-catalog/statistics/README.md),
+[guide.md §6.7](guide.md#67-statistics-package).
 
 ## How they compose (a worked shape)
 
@@ -171,6 +184,7 @@ completed run months later without re‑inferring a single token.
 
 ## Related
 
+- **[metrics-catalog/](metrics-catalog/README.md)** — the in‑depth per‑family, per‑metric drill‑down
 - [guide.md §6](guide.md#6-metric-catalog--statistics) — formulas, ranges, thresholds, gotchas
 - [reports.md](reports.md) — where these numbers surface, and for whom
 - [dataplane.md](dataplane.md) — coverage, publishability, and the scoring stage

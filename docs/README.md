@@ -11,7 +11,7 @@ repeat it.
 | You are… | Read in this order |
 |----------|--------------------|
 | **A new engineer** | [guide.md](guide.md) (full onboarding) → [architecture.md](architecture.md) → [dataplane.md](dataplane.md) → [schema.md](schema.md) → [principles.md](principles.md) |
-| **A researcher / eval author** | [metrics.md](metrics.md) → [guide.md §6](guide.md#6-metric-catalog--statistics) → [reports.md](reports.md) → [dataplane.md](dataplane.md#coverage-and-publishability) |
+| **A researcher / eval author** | [metrics.md](metrics.md) → [metrics-catalog/](metrics-catalog/README.md) (per‑family deep dive) → [guide.md §6](guide.md#6-metric-catalog--statistics) → [reports.md](reports.md) → [dataplane.md](dataplane.md#coverage-and-publishability) |
 | **An operator / on‑call** | [operations.md](operations.md) → [guide.md §7–8](guide.md#7-reading-the-logs-harness--ollamallamacpp) → [providers.md](providers.md) → [benchmarks.md](benchmarks.md) |
 | **A stakeholder / reviewer** | [reports.md](reports.md) → [principles.md](principles.md) → capability matrix in the [root README](../README.md) |
 
@@ -24,6 +24,7 @@ repeat it.
 | [dataplane.md](dataplane.md) | The Case → Generate → Score → Report pipeline, including the cache, retries, three‑layer timeouts, the outcome taxonomy, and how coverage/publishability are computed. |
 | [schema.md](schema.md) | The PostgreSQL model (tables, constraints, indexes) aligned with `store/models.py` and Alembic `0003`. |
 | [metrics.md](metrics.md) | The metric catalog as a narrative: what each metric is *for*, when to reach for it, and how lexical / structured / classification / calibration / retrieval / overlap / semantic metrics compose with statistics for honest comparison. |
+| [metrics-catalog/](metrics-catalog/README.md) | The in‑depth per‑family, per‑metric drill‑down: beginner intuition, formulas, edge cases, registered names/versions, and code links. One subdirectory per family. |
 | [providers.md](providers.md) | The `Provider` protocol, the Ollama / OpenAI‑compatible / Mock adapters, the managed runtime (rate limiter + circuit breaker), and how to add a backend. |
 | [reports.md](reports.md) | The JSON / HTML / JUnit artifacts and the leadership / research / engineering views. |
 | [operations.md](operations.md) | Local stack, CLI recipes, observability, failure modes, and quality gates. |
