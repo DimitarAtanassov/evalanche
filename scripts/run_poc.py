@@ -11,16 +11,21 @@ import asyncio
 import json
 import uuid
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from evalharness.config import get_settings
+from evalharness.core.models import ModelVersion
 from evalharness.datasets import load_dataset, validate_dataset
-from evalharness.execution.executor import Executor
+from evalharness.datasets.loader import DatasetBundle
+from evalharness.execution.executor import Executor, render_prompt, response_cache_key
 from evalharness.hashing import sha256_hex
 from evalharness.observability import setup_logging, setup_otel
 from evalharness.providers.mock import MOCK_DIGEST, MockProvider
 from evalharness.reporting.report import report_to_html, report_to_json, write_report
+from evalharness.scoring.engine import ScoringEngine
 from evalharness.store.db import init_db, session_scope
 from evalharness.store.models import GenerationRow, MetricAggregateRow, RunRow, ScoreRow
 from evalharness.store.repository import RunRepository
@@ -32,21 +37,43 @@ TEMPLATE = ROOT / "fixtures" / "templates" / "qa.jinja"
 FIXED_RUN_ID = uuid.UUID("00000000-0000-4000-8000-0000000000c1")
 
 
-async def _reset_poc_run(session: object) -> None:
-    repo = RunRepository(session)  # type: ignore[arg-type]
-    existing = await repo.get_run(FIXED_RUN_ID)
-    if not existing:
+async def _reset_poc_state(
+    session: AsyncSession,
+    *,
+    bundle: DatasetBundle,
+    model_version: ModelVersion,
+    template_body: str,
+    decode_params: dict[str, Any],
+) -> None:
+    """Drop prior PoC rows and their cached responses so every regeneration runs cold.
+
+    Without the cache purge a second local run would report ``cache_hits == len(cases)``
+    while a fresh CI database reports zero, making the committed artifacts irreproducible.
+    """
+    repo = RunRepository(session)
+    await repo.delete_cache(
+        [
+            response_cache_key(
+                provider=model_version.provider,
+                resolved_version=model_version.resolved_version,
+                rendered_prompt=render_prompt(template_body, case),
+                decode_params=decode_params,
+            )
+            for case in bundle.cases
+        ]
+    )
+    if await repo.get_run(FIXED_RUN_ID) is None:
+        await session.flush()
         return
-    gens = await repo.get_generations_for_run(FIXED_RUN_ID)
-    gen_ids = [g.id for g in gens]
+    gen_ids = [row.id for row in await repo.get_generations_for_run(FIXED_RUN_ID)]
     if gen_ids:
-        await session.execute(delete(ScoreRow).where(ScoreRow.generation_id.in_(gen_ids)))  # type: ignore[attr-defined]
-    await session.execute(  # type: ignore[attr-defined]
+        await session.execute(delete(ScoreRow).where(ScoreRow.generation_id.in_(gen_ids)))
+    await session.execute(
         delete(MetricAggregateRow).where(MetricAggregateRow.run_id == FIXED_RUN_ID)
     )
-    await session.execute(delete(GenerationRow).where(GenerationRow.run_id == FIXED_RUN_ID))  # type: ignore[attr-defined]
-    await session.execute(delete(RunRow).where(RunRow.id == FIXED_RUN_ID))  # type: ignore[attr-defined]
-    await session.flush()  # type: ignore[attr-defined]
+    await session.execute(delete(GenerationRow).where(GenerationRow.run_id == FIXED_RUN_ID))
+    await session.execute(delete(RunRow).where(RunRow.id == FIXED_RUN_ID))
+    await session.flush()
 
 
 async def run_poc(*, output_dir: Path) -> Path:
@@ -62,7 +89,7 @@ async def run_poc(*, output_dir: Path) -> Path:
 
     template_body = TEMPLATE.read_text(encoding="utf-8")
     template_sha = sha256_hex(template_body)
-    decode_params = {
+    decode_params: dict[str, Any] = {
         "temperature": 0.0,
         "max_tokens": 32,
         "seed": 42,
@@ -75,7 +102,13 @@ async def run_poc(*, output_dir: Path) -> Path:
     model_version = await provider.resolve_version("mock-qa")
 
     async with session_scope() as session:
-        await _reset_poc_run(session)
+        await _reset_poc_state(
+            session,
+            bundle=bundle,
+            model_version=model_version,
+            template_body=template_body,
+            decode_params=decode_params,
+        )
         repo = RunRepository(session)
         dataset_id = await repo.upsert_dataset(bundle)
         prompt_template_id = await repo.upsert_prompt_template(
@@ -110,6 +143,7 @@ async def run_poc(*, output_dir: Path) -> Path:
         run_id=FIXED_RUN_ID,
     )
     await executor.execute_run(run_id, concurrency=2)
+    await ScoringEngine().rescore_run(run_id, ["exact_match"])
 
     output_dir.mkdir(parents=True, exist_ok=True)
     report = await write_report(run_id, output_dir, coverage_floor=0.98)

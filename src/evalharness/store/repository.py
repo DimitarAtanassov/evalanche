@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from evalharness.core.enums import FailureOutcome, FinishReason, TaskType
@@ -36,6 +38,11 @@ class RunRepository:
         )
         existing = (await self.session.execute(stmt)).scalar_one_or_none()
         if existing:
+            if existing.content_sha256 != bundle.content_sha256:
+                raise ValueError(
+                    f"Dataset {bundle.manifest.name}@{bundle.manifest.version} already exists "
+                    "with different content"
+                )
             return existing.id
 
         row = DatasetRow(
@@ -86,6 +93,10 @@ class RunRepository:
         )
         existing = (await self.session.execute(stmt)).scalar_one_or_none()
         if existing:
+            if existing.content_sha256 != sha256:
+                raise ValueError(
+                    f"Prompt template {name}@{version} already exists with different content"
+                )
             return existing.id
         row = PromptTemplateRow(name=name, version=version, body=body, content_sha256=sha256)
         self.session.add(row)
@@ -160,7 +171,7 @@ class RunRepository:
                 run.finished_at = datetime.now(UTC)
 
     async def get_cases_for_dataset(self, dataset_id: int) -> list[tuple[int, Case]]:
-        stmt = select(CaseRow).where(CaseRow.dataset_id == dataset_id)
+        stmt = select(CaseRow).where(CaseRow.dataset_id == dataset_id).order_by(CaseRow.id)
         rows = (await self.session.execute(stmt)).scalars().all()
         result: list[tuple[int, Case]] = []
         for row in rows:
@@ -214,29 +225,41 @@ class RunRepository:
         raw_response: dict[str, Any] | None,
         trace_id: str | None,
     ) -> int:
-        row = GenerationRow(
-            run_id=run_id,
-            case_id=case_id,
-            repeat_idx=repeat_idx,
-            output=output,
-            tool_calls=tool_calls,
-            finish_reason=finish_reason.value if finish_reason else None,
-            outcome=outcome.value,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            cost_usd=cost_usd,
-            ttft_ms=ttft_ms,
-            total_ms=total_ms,
-            queue_wait_ms=queue_wait_ms,
-            attempts=attempts,
-            attempt_log=attempt_log,
-            cached=cached,
-            raw_response=raw_response,
-            trace_id=trace_id,
+        values = {
+            "run_id": run_id,
+            "case_id": case_id,
+            "repeat_idx": repeat_idx,
+            "output": output,
+            "tool_calls": tool_calls,
+            "finish_reason": finish_reason.value if finish_reason else None,
+            "outcome": outcome.value,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "cost_usd": cost_usd,
+            "ttft_ms": ttft_ms,
+            "total_ms": total_ms,
+            "queue_wait_ms": queue_wait_ms,
+            "attempts": attempts,
+            "attempt_log": attempt_log,
+            "cached": cached,
+            "raw_response": raw_response,
+            "trace_id": trace_id,
+        }
+        stmt = (
+            insert(GenerationRow)
+            .values(**values)
+            .on_conflict_do_nothing(index_elements=["run_id", "case_id", "repeat_idx"])
+            .returning(GenerationRow.id)
         )
-        self.session.add(row)
-        await self.session.flush()
-        return row.id
+        generation_id = (await self.session.execute(stmt)).scalar_one_or_none()
+        if generation_id is not None:
+            return generation_id
+        existing_stmt = select(GenerationRow.id).where(
+            GenerationRow.run_id == run_id,
+            GenerationRow.case_id == case_id,
+            GenerationRow.repeat_idx == repeat_idx,
+        )
+        return (await self.session.execute(existing_stmt)).scalar_one()
 
     async def save_score(
         self,
@@ -249,16 +272,27 @@ class RunRepository:
         passed: bool | None,
         detail: dict[str, Any] | None,
     ) -> None:
-        row = ScoreRow(
-            generation_id=generation_id,
-            metric_name=metric_name,
-            metric_version=metric_version,
-            metric_config_sha256=metric_config_sha256,
-            value=value,
-            passed=passed,
-            detail=detail,
+        stmt = (
+            insert(ScoreRow)
+            .values(
+                generation_id=generation_id,
+                metric_name=metric_name,
+                metric_version=metric_version,
+                metric_config_sha256=metric_config_sha256,
+                value=value,
+                passed=passed,
+                detail=detail,
+            )
+            .on_conflict_do_nothing(
+                index_elements=[
+                    "generation_id",
+                    "metric_name",
+                    "metric_version",
+                    "metric_config_sha256",
+                ]
+            )
         )
-        self.session.add(row)
+        await self.session.execute(stmt)
 
     async def save_metric_aggregate(
         self,
@@ -266,6 +300,7 @@ class RunRepository:
         run_id: uuid.UUID,
         metric_name: str,
         metric_version: str,
+        metric_config_sha256: str,
         slice_key: str,
         n: int,
         value: float,
@@ -274,23 +309,38 @@ class RunRepository:
         stddev: float | None,
         method: str,
     ) -> None:
-        self.session.add(
-            MetricAggregateRow(
-                run_id=run_id,
-                metric_name=metric_name,
-                metric_version=metric_version,
-                slice_key=slice_key,
-                n=n,
-                value=value,
-                ci_low=ci_low,
-                ci_high=ci_high,
-                stddev=stddev,
-                method=method,
-            )
+        stmt = insert(MetricAggregateRow).values(
+            run_id=run_id,
+            metric_name=metric_name,
+            metric_version=metric_version,
+            metric_config_sha256=metric_config_sha256,
+            slice_key=slice_key,
+            n=n,
+            value=value,
+            ci_low=ci_low,
+            ci_high=ci_high,
+            stddev=stddev,
+            method=method,
         )
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_metric_aggregates_identity",
+            set_={
+                "n": stmt.excluded.n,
+                "value": stmt.excluded.value,
+                "ci_low": stmt.excluded.ci_low,
+                "ci_high": stmt.excluded.ci_high,
+                "stddev": stmt.excluded.stddev,
+                "method": stmt.excluded.method,
+            },
+        )
+        await self.session.execute(stmt)
 
     async def get_generations_for_run(self, run_id: uuid.UUID) -> list[GenerationRow]:
-        stmt = select(GenerationRow).where(GenerationRow.run_id == run_id)
+        stmt = (
+            select(GenerationRow)
+            .where(GenerationRow.run_id == run_id)
+            .order_by(GenerationRow.case_id, GenerationRow.repeat_idx)
+        )
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def get_run(self, run_id: uuid.UUID) -> RunRow | None:
@@ -301,10 +351,31 @@ class RunRepository:
         return row.response if row else None
 
     async def put_cache(self, cache_key: str, response: dict[str, Any]) -> None:
-        existing = await self.session.get(ResponseCacheRow, cache_key)
-        if existing:
+        stmt = (
+            insert(ResponseCacheRow)
+            .values(cache_key=cache_key, response=response)
+            .on_conflict_do_nothing(index_elements=["cache_key"])
+        )
+        await self.session.execute(stmt)
+
+    async def delete_cache(self, cache_keys: Sequence[str]) -> None:
+        """Drop cached responses so a subsequent run executes cold."""
+        if not cache_keys:
             return
-        self.session.add(ResponseCacheRow(cache_key=cache_key, response=response))
+        await self.session.execute(
+            delete(ResponseCacheRow).where(ResponseCacheRow.cache_key.in_(list(cache_keys)))
+        )
+
+    async def get_planned_generation_count(self, run_id: uuid.UUID) -> int:
+        run = await self.get_run(run_id)
+        if run is None:
+            raise ValueError(f"Run not found: {run_id}")
+        case_count = (
+            await self.session.execute(
+                select(func.count(CaseRow.id)).where(CaseRow.dataset_id == run.dataset_id)
+            )
+        ).scalar_one()
+        return int(case_count) * run.repeats
 
     async def get_case_external_id(self, case_id: int) -> str:
         row = await self.session.get(CaseRow, case_id)
@@ -317,6 +388,19 @@ class RunRepository:
             select(ScoreRow)
             .join(GenerationRow, ScoreRow.generation_id == GenerationRow.id)
             .where(GenerationRow.run_id == run_id)
+            .order_by(ScoreRow.generation_id, ScoreRow.metric_name, ScoreRow.metric_version)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def get_metric_aggregates(self, run_id: uuid.UUID) -> list[MetricAggregateRow]:
+        stmt = (
+            select(MetricAggregateRow)
+            .where(MetricAggregateRow.run_id == run_id)
+            .order_by(
+                MetricAggregateRow.metric_name,
+                MetricAggregateRow.metric_version,
+                MetricAggregateRow.slice_key,
+            )
         )
         return list((await self.session.execute(stmt)).scalars().all())
 

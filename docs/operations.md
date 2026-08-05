@@ -7,6 +7,8 @@ docker compose up -d postgres   # required
 docker compose up -d ollama     # only for live Ollama runs
 cp .env.example .env
 uv sync --all-extras
+uv run alembic upgrade head
+# equivalent:
 uv run python -c "import asyncio; from evalharness.store.db import init_db; asyncio.run(init_db())"
 ```
 
@@ -57,7 +59,9 @@ uv run evalctl run --resume <run_uuid> \
   --provider mock
 ```
 
-Exit codes: `0` success, `1` validation/config error, `2` coverage below publish floor.
+Resume verifies dataset/template/model FKs and `config_sha256` against the stored run.
+
+Exit codes: `0` success, `1` validation/config error, `2` coverage below publish floor or run not publishable.
 
 ## Proof of concept
 
@@ -85,8 +89,9 @@ CI runs the same path: Postgres service + mock provider + golden report assertio
 |---------|--------------|--------|
 | Tests skip `db_ready` | No Postgres | `docker compose up -d postgres` |
 | Ollama digest error | Model not pulled / no digest | `ollama pull <model>`; inspect `/api/show` |
-| Exit code 2 | Coverage < floor | Inspect harness outcomes; fix infra before publishing |
+| Exit code 2 | Incomplete run or coverage < floor | Inspect run status and harness outcomes |
 | Duplicate key on resume | Concurrent writers | Single executor per run_id |
+| Resume rejected | Dataset/template/model/config mismatch | Use the same inputs as the original run |
 
 ## Quality gates (dev)
 

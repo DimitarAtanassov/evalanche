@@ -137,6 +137,7 @@ class ScoreValue:
 @dataclass(frozen=True)
 class AggregateValue:
     metric_name: str
+    metric_version: str
     slice_key: str
     n: int
     value: float

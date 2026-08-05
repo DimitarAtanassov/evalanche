@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 from typing import Any
@@ -26,11 +27,24 @@ class OllamaProvider:
         self._client = httpx.AsyncClient(base_url=self.base_url, timeout=120.0)
 
     async def resolve_version(self, model: str) -> ModelVersion:
+        tags_resp = await self._client.get("/api/tags")
+        tags_resp.raise_for_status()
+        match = next(
+            (
+                item
+                for item in tags_resp.json().get("models", [])
+                if item.get("name") == model
+                or item.get("model") == model
+                or str(item.get("name", "")).split(":", 1)[0] == model
+                or str(item.get("model", "")).split(":", 1)[0] == model
+            ),
+            None,
+        )
         resp = await self._client.post("/api/show", json={"name": model})
         resp.raise_for_status()
         data = resp.json()
         details = data.get("details") or {}
-        digest = data.get("digest") or details.get("digest")
+        digest = (match or {}).get("digest") or data.get("digest") or details.get("digest")
         if not digest:
             raise ValueError(
                 f"Ollama model '{model}' has no digest; cannot pin version. "
@@ -43,8 +57,8 @@ class OllamaProvider:
             resolved_version=digest,
             quantization=quantization,
             params_b=_parse_params_b(details.get("parameter_size")),
-            context_window=None,
-            capabilities=self.capabilities(model),
+            context_window=_context_window(data),
+            capabilities=self._capabilities_from_show(data),
         )
 
     def capabilities(self, model: str) -> Capabilities:
@@ -57,6 +71,14 @@ class OllamaProvider:
             supports_system_role=True,
             max_context_tokens=8192,
         )
+
+    def _capabilities_from_show(self, data: dict[str, Any]) -> Capabilities:
+        advertised = set(data.get("capabilities") or [])
+        base = self.capabilities("")
+        base["supports_tools"] = "tools" in advertised
+        base["supports_json_schema"] = "completion" in advertised
+        base["max_context_tokens"] = _context_window(data) or base["max_context_tokens"]
+        return base
 
     async def generate(self, model: str, req: GenerationRequest) -> GenerationResponse:
         payload: dict[str, Any] = {
@@ -77,6 +99,20 @@ class OllamaProvider:
             payload["options"]["seed"] = req.seed
         if req.stop:
             payload["options"]["stop"] = req.stop
+        if req.response_format:
+            payload["format"] = req.response_format.get("json_schema", req.response_format)
+        if req.tools:
+            payload["tools"] = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.parameters,
+                    },
+                }
+                for tool in req.tools
+            ]
 
         start = time.perf_counter()
         ttft_ms: float | None = None
@@ -85,6 +121,7 @@ class OllamaProvider:
         prompt_tokens: int | None = None
         completion_tokens: int | None = None
         finish_reason = FinishReason.STOP
+        tool_calls: list[ToolCall] = []
 
         async with self._client.stream(
             "POST",
@@ -101,6 +138,18 @@ class OllamaProvider:
                 if ttft_ms is None and chunk.get("message", {}).get("content"):
                     ttft_ms = (time.perf_counter() - start) * 1000
                 content = chunk.get("message", {}).get("content", "")
+                for call in chunk.get("message", {}).get("tool_calls", []):
+                    function = call.get("function") or {}
+                    tool_calls.append(
+                        ToolCall(
+                            id=call.get("id")
+                            or hashlib.sha256(
+                                json.dumps(call, sort_keys=True).encode()
+                            ).hexdigest()[:16],
+                            name=function.get("name", ""),
+                            arguments=function.get("arguments") or {},
+                        )
+                    )
                 if content:
                     text_parts.append(content)
                 if chunk.get("done"):
@@ -114,7 +163,8 @@ class OllamaProvider:
         if ttft_ms is None:
             ttft_ms = total_ms
 
-        tool_calls: list[ToolCall] = []
+        if tool_calls:
+            finish_reason = FinishReason.TOOL_CALLS
         return GenerationResponse(
             text="".join(text_parts),
             tool_calls=tool_calls,
@@ -128,12 +178,11 @@ class OllamaProvider:
         )
 
     async def embed(self, model: str, texts: list[str]) -> list[list[float]]:
-        vectors: list[list[float]] = []
-        for text in texts:
-            resp = await self._client.post("/api/embeddings", json={"model": model, "prompt": text})
-            resp.raise_for_status()
-            vectors.append(resp.json()["embedding"])
-        return vectors
+        if not texts:
+            return []
+        resp = await self._client.post("/api/embed", json={"model": model, "input": texts})
+        resp.raise_for_status()
+        return [list(map(float, vector)) for vector in resp.json()["embeddings"]]
 
     def classify_error(self, exc: Exception) -> ErrorClass:
         if isinstance(exc, httpx.TimeoutException):
@@ -163,3 +212,11 @@ def _parse_params_b(size: str | None) -> float | None:
         return float(size)
     except ValueError:
         return None
+
+
+def _context_window(data: dict[str, Any]) -> int | None:
+    model_info = data.get("model_info") or {}
+    for key, value in model_info.items():
+        if key.endswith(".context_length"):
+            return int(value)
+    return None

@@ -1,20 +1,24 @@
 {
+  "schema_version": "1.0",
   "run_id": "00000000-0000-4000-8000-0000000000c1",
+  "run_status": "completed",
   "config_sha256": "f9c5bc7f8e2a01487dc0d99dc7710d59c5ef1ab48ce09aaf5d45511bcc12b2c6",
   "model_digest": "mock-digest-phase1-poc-0001",
   "dataset_sha256": "c3dbdeaf2ef697ad3fcbddd314759c652ffdcb624d13f5177fea639240a6681a",
   "coverage": 1.0,
+  "planned_generations": 5,
+  "written_generations": 5,
   "coverage_floor": 0.98,
   "publishable": true,
   "pass_rate": 1.0,
   "pass_rate_ci": {
-    "low": 0.5655085052479191,
+    "low": 0.5655175352168251,
     "high": 1.0
   },
   "outcome_histogram": {
     "passed": 5
   },
-  "latency_ms": {
+  "latency": {
     "p50": 5.0,
     "p90": 5.0,
     "p95": 5.0,
@@ -29,11 +33,37 @@
     {
       "metric": "exact_match",
       "version": "1.0.0",
+      "config_sha256": "a1f0914ad7dfa8dd521c91d72a1010c6f03b8a328719e81b6e89d5bad5e00859",
+      "slice": "__overall__",
+      "n": 5,
       "value": 1.0,
       "ci_low": 0.5655085052479191,
       "ci_high": 1.0,
       "method": "wilson"
     }
   ],
-  "trace_ids_sample": []
+  "trace_ids_sample": [],
+  "views": {
+    "leadership": {
+      "cost_per_correct": 0.0,
+      "coverage": 1.0
+    },
+    "research": {
+      "confidence_method": "Wilson 95%",
+      "flaky_cases_excluded": true
+    },
+    "engineering": {
+      "retries": 0,
+      "cache_hits": 0,
+      "cache_rate": 0.0
+    }
+  },
+  "latency_ms": {
+    "p50": 5.0,
+    "p90": 5.0,
+    "p95": 5.0,
+    "p99": 5.0,
+    "max": 5.0,
+    "mean": 5.0
+  }
 }

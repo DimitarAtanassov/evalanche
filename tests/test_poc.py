@@ -25,9 +25,12 @@ def test_poc_report_is_publishable_and_complete() -> None:
     assert report["publishable"] is True
     assert report["coverage"] == 1.0
     assert report["pass_rate"] == 1.0
-    assert 0.0 <= report["pass_rate_ci"]["low"] <= report["pass_rate"] <= report["pass_rate_ci"][
-        "high"
-    ]
+    assert (
+        0.0
+        <= report["pass_rate_ci"]["low"]
+        <= report["pass_rate"]
+        <= report["pass_rate_ci"]["high"]
+    )
     assert set(report["latency_ms"]) >= {"p50", "p90", "p95", "p99", "max", "mean"}
     assert report["outcome_histogram"].get("passed", 0) == 5
     assert meta["provider"] == "mock"

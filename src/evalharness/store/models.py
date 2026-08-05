@@ -94,7 +94,16 @@ class ModelVersionRow(Base):
     context_window: Mapped[int | None] = mapped_column(Integer)
     capabilities: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
-    __table_args__ = (UniqueConstraint("provider", "model", "resolved_version", "quantization"),)
+    __table_args__ = (
+        Index(
+            "uq_model_versions_identity",
+            "provider",
+            "model",
+            "resolved_version",
+            func.coalesce(quantization, ""),
+            unique=True,
+        ),
+    )
 
 
 class RunRow(Base):
@@ -146,7 +155,10 @@ class GenerationRow(Base):
     trace_id: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
-    __table_args__ = (UniqueConstraint("run_id", "case_id", "repeat_idx"),)
+    __table_args__ = (
+        UniqueConstraint("run_id", "case_id", "repeat_idx"),
+        Index("ix_generations_run_id", "run_id"),
+    )
 
 
 class ScoreRow(Base):
@@ -164,6 +176,7 @@ class ScoreRow(Base):
 
     __table_args__ = (
         UniqueConstraint("generation_id", "metric_name", "metric_version", "metric_config_sha256"),
+        Index("ix_scores_generation_id", "generation_id"),
     )
 
 
@@ -216,6 +229,7 @@ class MetricAggregateRow(Base):
     run_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("runs.id"))
     metric_name: Mapped[str] = mapped_column(Text)
     metric_version: Mapped[str] = mapped_column(Text)
+    metric_config_sha256: Mapped[str] = mapped_column(Text, nullable=False)
     slice_key: Mapped[str] = mapped_column(Text, nullable=False, server_default="__overall__")
     n: Mapped[int] = mapped_column(Integer, nullable=False)
     value: Mapped[float] = mapped_column(Float, nullable=False)
@@ -223,6 +237,17 @@ class MetricAggregateRow(Base):
     ci_high: Mapped[float | None] = mapped_column(Float)
     stddev: Mapped[float | None] = mapped_column(Float)
     method: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id",
+            "metric_name",
+            "metric_version",
+            "slice_key",
+            "metric_config_sha256",
+            name="uq_metric_aggregates_identity",
+        ),
+    )
 
 
 class ResponseCacheRow(Base):

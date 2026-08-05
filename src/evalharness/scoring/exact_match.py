@@ -59,6 +59,7 @@ class ExactMatchMetric:
         if n == 0:
             return AggregateValue(
                 metric_name=self.name,
+                metric_version=self.version,
                 slice_key="__overall__",
                 n=0,
                 value=0.0,
@@ -72,6 +73,7 @@ class ExactMatchMetric:
         ci_low, ci_high = wilson_interval(successes, n)
         return AggregateValue(
             metric_name=self.name,
+            metric_version=self.version,
             slice_key="__overall__",
             n=n,
             value=rate,

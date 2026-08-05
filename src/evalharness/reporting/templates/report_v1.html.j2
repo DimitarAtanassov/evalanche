@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>evalanche report {{ report.run_id }}</title>
+  <style>
+    body{font:15px system-ui,sans-serif;max-width:1200px;margin:2rem auto;padding:0 1rem;color:#172033}
+    nav a{margin-right:1rem} section{margin:2rem 0} table{border-collapse:collapse;width:100%}
+    th,td{border:1px solid #ccd2dc;padding:.45rem;text-align:left}.warning{color:#9b1c1c;font-weight:700}
+    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem}
+    .card{border:1px solid #ccd2dc;border-radius:8px;padding:1rem}.provenance{font-size:.85rem;color:#526075}
+  </style>
+</head>
+<body>
+<h1>evalanche evaluation report</h1>
+<nav><a href="#leadership">Leadership</a><a href="#research">Research</a><a href="#engineering">Engineering</a></nav>
+{% if not report.publishable %}<p class="warning">Not publishable: coverage is below the configured floor.</p>{% endif %}
+<section id="leadership">
+  <h2>Leadership scorecard</h2>
+  <div class="cards">
+    <div class="card"><strong>Publishable</strong><br>{{ report.publishable }}</div>
+    <div class="card"><strong>Coverage</strong><br>{{ "%.2f%%"|format(report.coverage*100) }}</div>
+    <div class="card"><strong>Pass Rate</strong><br>{{ "%.2f%%"|format(report.pass_rate*100) }}</div>
+    <div class="card"><strong>Cost / correct</strong><br>{{ report.views.leadership.cost_per_correct }}</div>
+  </div>
+</section>
+<section id="research"><h2>Research analysis</h2>
+  <p>95% Wilson interval: {{ report.pass_rate_ci.low }}–{{ report.pass_rate_ci.high }}</p>
+  <table><caption>Metric aggregates</caption><tr><th>Metric</th><th>Version</th><th>Value</th><th>Method</th></tr>
+  {% for metric in report.metric_aggregates %}<tr><td>{{ metric.metric }}</td><td>{{ metric.version }}</td><td>{{ metric.value }}</td><td>{{ metric.method }}</td></tr>{% endfor %}</table>
+</section>
+<section id="engineering"><h2>Engineering operations</h2>
+  {{ plot|safe }}
+  <table><caption>Accessible latency data</caption><tr>{% for key in report.latency %}<th>{{ key }}</th>{% endfor %}</tr>
+  <tr>{% for value in report.latency.values() %}<td>{{ value }}</td>{% endfor %}</tr></table>
+  <h3>Provider outcomes</h3><table><tr><th>Outcome</th><th>Count</th></tr>{% for key,value in report.outcome_histogram.items() %}<tr><td>{{ key }}</td><td>{{ value }}</td></tr>{% endfor %}</table>
+</section>
+<p class="provenance">Schema {{ report.schema_version }} · config {{ report.config_sha256 }} · model {{ report.model_digest }} · dataset {{ report.dataset_sha256 }}. Prompts and raw responses are omitted.</p>
+</body></html>
