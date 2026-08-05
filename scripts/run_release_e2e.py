@@ -68,16 +68,20 @@ def prepare_inputs() -> tuple[Path, Path]:
 async def latest_runs() -> list[RunRow]:
     async with session_scope() as session:
         rows = (
-            await session.execute(
-                select(RunRow)
-                .where(
-                    RunRow.tenant_id == "release-v0.2.0",
-                    RunRow.status == "completed",
+            (
+                await session.execute(
+                    select(RunRow)
+                    .where(
+                        RunRow.tenant_id == "release-v0.2.0",
+                        RunRow.status == "completed",
+                    )
+                    .order_by(RunRow.started_at.desc())
+                    .limit(2)
                 )
-                .order_by(RunRow.started_at.desc())
-                .limit(2)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return list(reversed(rows))
 
 
@@ -97,9 +101,7 @@ async def semantic_rescore(run: RunRow, provider: OllamaProvider) -> None:
         cases = {
             row.id: row
             for row in (
-                await session.execute(
-                    select(CaseRow).where(CaseRow.dataset_id == run.dataset_id)
-                )
+                await session.execute(select(CaseRow).where(CaseRow.dataset_id == run.dataset_id))
             ).scalars()
         }
         for start in range(0, len(generations), 64):
@@ -189,9 +191,7 @@ async def main() -> None:
     await write_report(baseline_run.id, REPORTS)
     await write_report(candidate_run.id, REPORTS)
 
-    comparison = await _compare_runs_async(
-        baseline_run.id, candidate_run.id, "exact_match", True
-    )
+    comparison = await _compare_runs_async(baseline_run.id, candidate_run.id, "exact_match", True)
     (ROOT / "comparison.json").write_text(json.dumps(comparison, indent=2), encoding="utf-8")
     manifest = {
         "baseline_run_id": str(baseline_run.id),

@@ -142,7 +142,8 @@ class OllamaProvider:
                     function = call.get("function") or {}
                     tool_calls.append(
                         ToolCall(
-                            id=call.get("id") or hashlib.sha256(
+                            id=call.get("id")
+                            or hashlib.sha256(
                                 json.dumps(call, sort_keys=True).encode()
                             ).hexdigest()[:16],
                             name=function.get("name", ""),

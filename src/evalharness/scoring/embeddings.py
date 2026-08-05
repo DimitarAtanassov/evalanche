@@ -76,9 +76,7 @@ class EmbeddingService:
         ]
         norm = math.sqrt(sum(value * value for value in centroid))
         centroid = [value / norm for value in centroid]
-        cosine = sum(
-            left * right for left, right in zip(vectors[0], centroid, strict=True)
-        )
+        cosine = sum(left * right for left, right in zip(vectors[0], centroid, strict=True))
         # Direction is explicit in provenance even though cosine itself is symmetric;
         # downstream threshold calibration is maintained per variant.
         return cosine

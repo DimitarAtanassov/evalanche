@@ -1,14 +1,6 @@
 # Database schema
 
-PostgreSQL 16 + `pgvector`. Alembic is the sole schema owner; `init_db()` runs
-`alembic upgrade head` and never invokes runtime `create_all`. The forward
-baseline supports clean databases and upgrades from the former runtime schema.
-Checkpoint, cache, score, and aggregate writes are idempotent; aggregate
-identity includes the metric configuration hash.
-
-Generation partitioning is deliberately deferred. When table size requires it,
-use a staged shadow-table, dual-write, backfill, validate, and swap migration;
-never silently rewrite a live generations table.
+PostgreSQL 16 + `pgvector`. **Alembic is the sole schema owner** — `init_db()` runs `alembic upgrade head`; runtime code never calls `create_all`.
 
 Raw provider payloads live in **`generations.raw_response` (JSONB)** — not object storage. Revisit triggers are local-only (`DEFERRED.md`).
 
@@ -32,10 +24,10 @@ erDiagram
 
 | Table | Purpose | Key uniqueness |
 |-------|---------|----------------|
-| `datasets` | Named dataset version + content hash + manifest | `(name, version)` |
+| `datasets` | Named dataset version + content hash + manifest | `(name, version)` — hash mismatch on existing row is a hard error |
 | `cases` | One eval case | `(dataset_id, external_id)` |
-| `prompt_templates` | Template body + hash | `(name, version)` |
-| `model_versions` | Provider + model + **resolved** version + quant | `(provider, model, resolved_version, quantization)` |
+| `prompt_templates` | Template body + hash | `(name, version)` — hash mismatch on existing row is a hard error |
+| `model_versions` | Provider + model + **resolved** version + quant | `UNIQUE (provider, model, resolved_version, COALESCE(quantization, ''))` |
 
 ### Runs
 
@@ -49,8 +41,8 @@ Statuses: `queued` → `running` → `completed` | `failed` | `cancelled`.
 
 | Table | Purpose |
 |-------|---------|
-| `generations` | One row per `(run_id, case_id, repeat_idx)` — **never update** except a narrow interim outcome flip to `failed_score` after scoring (tracked debt: prefer score-only interpretation) |
-| `scores` | Metric results referencing `generation_id` |
+| `generations` | One row per `(run_id, case_id, repeat_idx)` — **never update** after insert |
+| `scores` | Metric results referencing `generation_id`; pass/fail quality lives here |
 | `metric_aggregates` | Overall (and later slice) rollups with CI method |
 
 ### Forward-compatible (schema present, unused in current scoring paths)
@@ -59,11 +51,11 @@ Statuses: `queued` → `running` → `completed` | `failed` | `cancelled`.
 
 ### Cache
 
-`response_cache` — `cache_key` PK → JSON response payload.
+`response_cache` — `cache_key` PK → JSON response payload (`ON CONFLICT DO NOTHING` on put).
 
 ## Generation columns of note
 
-- `outcome` — failure taxonomy
+- `outcome` — provider/harness failure taxonomy at generation time (not post-score quality)
 - `raw_response` — provider payload JSONB
 - `attempt_log` — retry history
 - `trace_id` — OTel linkage
@@ -73,17 +65,22 @@ Statuses: `queued` → `running` → `completed` | `failed` | `cancelled`.
 
 | Revision | Change |
 |----------|--------|
-| `0001_initial` | Ensures `vector` extension; metadata create is primary bootstrap |
+| `0001_initial` | Full baseline DDL (`IF NOT EXISTS` guards for existing PoC DBs) |
 | `0002_raw_response_jsonb` | `raw_response` JSONB; drop legacy `raw_uri` |
+| `0003_foundation_correctness` | Metric aggregate identity + config hash, btree indexes, NULL-safe model uniqueness |
 
-Apply locally after compose:
+Bootstrap:
 
 ```bash
+uv run alembic upgrade head
+# or
 uv run python -c "import asyncio; from evalharness.store.db import init_db; asyncio.run(init_db())"
-# or alembic upgrade head when using migration workflow
 ```
 
-## Indexing
+## Indexing and idempotency
 
 - GIN on `cases.slices` (`jsonb_path_ops`) for slice filters
-- Uniqueness constraints above act as resume/idempotency guards
+- Btree on `generations(run_id)` and `scores(generation_id)`
+- `UNIQUE (run_id, case_id, repeat_idx)` — checkpoint inserts use `ON CONFLICT DO NOTHING`
+- `UNIQUE (run_id, metric_name, metric_version, slice_key, metric_config_sha256)` on `metric_aggregates` with upsert on aggregate writes
+- `UNIQUE (generation_id, metric_name, metric_version, metric_config_sha256)` on `scores`

@@ -11,17 +11,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "ALTER TABLE metric_aggregates ADD COLUMN IF NOT EXISTS "
-        "metric_config_sha256 TEXT"
-    )
+    op.execute("ALTER TABLE metric_aggregates ADD COLUMN IF NOT EXISTS metric_config_sha256 TEXT")
     op.execute(
         "UPDATE metric_aggregates SET metric_config_sha256 = 'legacy-unversioned' "
         "WHERE metric_config_sha256 IS NULL"
     )
-    op.execute(
-        "ALTER TABLE metric_aggregates ALTER COLUMN metric_config_sha256 SET NOT NULL"
-    )
+    op.execute("ALTER TABLE metric_aggregates ALTER COLUMN metric_config_sha256 SET NOT NULL")
     op.execute(
         """
         DELETE FROM metric_aggregates newer USING metric_aggregates older
@@ -72,8 +67,7 @@ def downgrade() -> None:
         "DROP INDEX IF EXISTS ix_generations_run_id",
         "DROP INDEX IF EXISTS ix_runs_status_started_at",
         "DROP INDEX IF EXISTS ix_generations_run_case_repeat",
-        "ALTER TABLE metric_aggregates "
-        "DROP CONSTRAINT IF EXISTS uq_metric_aggregates_identity",
+        "ALTER TABLE metric_aggregates DROP CONSTRAINT IF EXISTS uq_metric_aggregates_identity",
         "ALTER TABLE metric_aggregates DROP COLUMN IF EXISTS metric_config_sha256",
     ):
         op.execute(statement)

@@ -15,8 +15,25 @@ from evalharness.scoring.catalog import ClassificationMetric, RetrievalMetric, R
 
 def generation(output: str) -> Generation:
     return Generation(
-        None, "conformance", "case", 0, output, [], None, FailureOutcome.PASSED,
-        None, None, 0.0, None, None, None, 1, [], False, None, None,
+        None,
+        "conformance",
+        "case",
+        0,
+        output,
+        [],
+        None,
+        FailureOutcome.PASSED,
+        None,
+        None,
+        0.0,
+        None,
+        None,
+        None,
+        1,
+        [],
+        False,
+        None,
+        None,
     )
 
 
@@ -27,16 +44,18 @@ def main() -> None:
         Case("retrieval", TaskType.RETRIEVAL, {}, qrels={"d1": 3, "d2": 2, "d3": 1}),
         context,
     )[0]
-    classification = ClassificationMetric().aggregate([
-        ClassificationMetric().score(
-            generation(predicted),
-            Case(str(index), TaskType.CLASSIFICATION, {}, expected_label=expected),
-            context,
-        )[0]
-        for index, (predicted, expected) in enumerate(
-            [("a", "a"), ("b", "b"), ("a", "b"), ("c", "c")]
-        )
-    ])
+    classification = ClassificationMetric().aggregate(
+        [
+            ClassificationMetric().score(
+                generation(predicted),
+                Case(str(index), TaskType.CLASSIFICATION, {}, expected_label=expected),
+                context,
+            )[0]
+            for index, (predicted, expected) in enumerate(
+                [("a", "a"), ("b", "b"), ("a", "b"), ("c", "c")]
+            )
+        ]
+    )
     rouge = RougeLMetric().score(
         generation("the cat sat on the mat"),
         Case("summary", TaskType.SUMMARIZATION, {}, reference_answer="the cat is on the mat"),
@@ -50,9 +69,7 @@ def main() -> None:
             "accuracy": classification.value,
             "method_detail": json.loads(classification.method),
         },
-        "calibration": calibration_metrics(
-            [True, True, False, True], [0.95, 0.8, 0.7, 0.6]
-        ),
+        "calibration": calibration_metrics([True, True, False, True], [0.95, 0.8, 0.7, 0.6]),
         "retrieval": {
             "ndcg_at_10": retrieval.value,
             "trec_eval_reference": 1.0,

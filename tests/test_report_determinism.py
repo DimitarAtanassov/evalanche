@@ -18,10 +18,13 @@ def _report() -> RunReport:
     return RunReport(
         schema_version="1.0",
         run_id=RUN_ID,
+        run_status="completed",
         config_sha256="c" * 64,
         model_digest="mock-digest",
         dataset_sha256="d" * 64,
         coverage=1.0,
+        planned_generations=5,
+        written_generations=5,
         coverage_floor=0.98,
         publishable=True,
         pass_rate=1.0,

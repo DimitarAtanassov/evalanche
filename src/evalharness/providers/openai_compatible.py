@@ -124,12 +124,14 @@ class OpenAICompatibleProvider:
                     text_parts.append(content)
                 for call in delta.get("tool_calls") or []:
                     idx = int(call.get("index", 0))
-                    fragment = tool_fragments.setdefault(idx, {"id": "", "name": "", "arguments": ""})
+                    fragment = tool_fragments.setdefault(
+                        idx, {"id": "", "name": "", "arguments": ""}
+                    )
                     fragment["id"] += call.get("id") or ""
                     function = call.get("function") or {}
                     fragment["name"] += function.get("name") or ""
                     fragment["arguments"] += function.get("arguments") or ""
-                for entry in ((choice.get("logprobs") or {}).get("content") or []):
+                for entry in (choice.get("logprobs") or {}).get("content") or []:
                     token_logprobs.append(
                         TokenLogprob(token=str(entry["token"]), logprob=float(entry["logprob"]))
                     )
@@ -158,9 +160,7 @@ class OpenAICompatibleProvider:
         )
 
     async def embed(self, model: str, texts: list[str]) -> list[list[float]]:
-        response = await self._client.post(
-            "/v1/embeddings", json={"model": model, "input": texts}
-        )
+        response = await self._client.post("/v1/embeddings", json={"model": model, "input": texts})
         response.raise_for_status()
         rows = sorted(response.json()["data"], key=lambda row: row["index"])
         return [list(map(float, row["embedding"])) for row in rows]

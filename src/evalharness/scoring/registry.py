@@ -22,7 +22,9 @@ class MetricRegistry:
         try:
             return self._metrics[name]
         except KeyError as exc:
-            raise ValueError(f"Unknown metric '{name}'. Available: {sorted(self._metrics)}") from exc
+            raise ValueError(
+                f"Unknown metric '{name}'. Available: {sorted(self._metrics)}"
+            ) from exc
 
     def names(self) -> list[str]:
         return sorted(self._metrics)

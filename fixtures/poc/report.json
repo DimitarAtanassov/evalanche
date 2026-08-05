@@ -1,10 +1,13 @@
 {
   "schema_version": "1.0",
   "run_id": "00000000-0000-4000-8000-0000000000c1",
+  "run_status": "completed",
   "config_sha256": "f9c5bc7f8e2a01487dc0d99dc7710d59c5ef1ab48ce09aaf5d45511bcc12b2c6",
   "model_digest": "mock-digest-phase1-poc-0001",
   "dataset_sha256": "c3dbdeaf2ef697ad3fcbddd314759c652ffdcb624d13f5177fea639240a6681a",
   "coverage": 1.0,
+  "planned_generations": 5,
+  "written_generations": 5,
   "coverage_floor": 0.98,
   "publishable": true,
   "pass_rate": 1.0,

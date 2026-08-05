@@ -43,7 +43,9 @@ class ScalarMetric:
     def config_id(self) -> str:
         return sha256_canonical({"metric": self.name, "version": self.version, **self.config})
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         raise NotImplementedError
 
     def score(self, gen: Generation, case: Case, ctx: ScoringContext) -> list[ScoreValue]:
@@ -63,7 +65,10 @@ class ScalarMetric:
         valid = [float(value.value) for value in values if value.value is not None]
         mean = float(np.mean(valid)) if valid else 0.0
         low, high = (
-            wilson_interval(sum(value >= float(self.config.get("threshold", 0.5)) for value in valid), len(valid))
+            wilson_interval(
+                sum(value >= float(self.config.get("threshold", 0.5)) for value in valid),
+                len(valid),
+            )
             if valid
             else (0.0, 0.0)
         )
@@ -91,7 +96,9 @@ def _tokens(text: str) -> list[str]:
 class SquadMetric(ScalarMetric):
     name = "squad_f1"
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         reference = _reference(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}
@@ -111,7 +118,9 @@ class LevenshteinMetric(ScalarMetric):
         self.threshold = threshold
         self.config = {"threshold": threshold}
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         reference = _reference(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}
@@ -124,7 +133,9 @@ class AssertionMetric(ScalarMetric):
     requires = frozenset()
     config = {"threshold": 1.0}
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         if gen.output is None:
             return 0.0, {"reason": "missing_output"}
         folded = gen.output.casefold()
@@ -138,7 +149,9 @@ class NumericAssertionMetric(ScalarMetric):
     name = "numeric_assertion"
     config = {"threshold": 1.0, "abs_tol": 1e-6, "rel_tol": 1e-6}
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         reference = _reference(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}
@@ -157,7 +170,9 @@ class JsonValidityMetric(ScalarMetric):
     requires = frozenset()
     config = {"threshold": 1.0}
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         try:
             parsed = json.loads(gen.output or "")
             schema = case.inputs.get("json_schema")
@@ -172,7 +187,9 @@ class JsonFieldF1Metric(ScalarMetric):
     name = "json_field_f1"
     task_types = frozenset({TaskType.EXTRACTION, TaskType.GENERATION})
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         if case.expected_json is None:
             return None, {"reason": "missing_expected_json"}
         try:
@@ -207,7 +224,9 @@ class ClassificationMetric(ScalarMetric):
     requires = frozenset()
     config = {"threshold": 1.0}
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         if gen.output is None or case.expected_label is None:
             return None, {"reason": "missing"}
         predicted = gen.output.strip()
@@ -221,11 +240,17 @@ class ClassificationMetric(ScalarMetric):
         expected = [str(item["expected"]) for item in details]
         predicted = [str(item["predicted"]) for item in details]
         accuracy = float(accuracy_score(expected, predicted)) if expected else 0.0
-        precision, recall, f1, _ = precision_recall_fscore_support(
-            expected, predicted, average="weighted", zero_division=0
-        ) if expected else (0.0, 0.0, 0.0, None)
+        precision, recall, f1, _ = (
+            precision_recall_fscore_support(
+                expected, predicted, average="weighted", zero_division=0
+            )
+            if expected
+            else (0.0, 0.0, 0.0, None)
+        )
         detail = {
-            "balanced_accuracy": float(balanced_accuracy_score(expected, predicted)) if expected else 0.0,
+            "balanced_accuracy": float(balanced_accuracy_score(expected, predicted))
+            if expected
+            else 0.0,
             "macro_f1": float(f1_score(expected, predicted, average="macro")) if expected else 0.0,
             "micro_f1": float(f1_score(expected, predicted, average="micro")) if expected else 0.0,
             "weighted_precision": float(precision),
@@ -234,8 +259,20 @@ class ClassificationMetric(ScalarMetric):
             "mcc": float(matthews_corrcoef(expected, predicted)) if expected else 0.0,
             "cohen_kappa": float(cohen_kappa_score(expected, predicted)) if expected else 0.0,
         }
-        low, high = wilson_interval(sum(x == y for x, y in zip(expected, predicted, strict=True)), len(expected))
-        return AggregateValue(self.name, self.version, "__overall__", len(expected), accuracy, low, high, None, json.dumps(detail, sort_keys=True))
+        low, high = wilson_interval(
+            sum(x == y for x, y in zip(expected, predicted, strict=True)), len(expected)
+        )
+        return AggregateValue(
+            self.name,
+            self.version,
+            "__overall__",
+            len(expected),
+            accuracy,
+            low,
+            high,
+            None,
+            json.dumps(detail, sort_keys=True),
+        )
 
 
 class RetrievalMetric(ScalarMetric):
@@ -244,7 +281,9 @@ class RetrievalMetric(ScalarMetric):
     requires = frozenset({Requirement.QRELS})
     config = {"threshold": 0.0, "cutoffs": [1, 3, 5, 10, 20]}
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         if not case.qrels:
             return None, {"excluded": "zero_relevance"}
         try:
@@ -268,7 +307,10 @@ class RetrievalMetric(ScalarMetric):
             if item in relevant
         ]
         detail["map"] = sum(precisions) / len(relevant)
-        dcg = sum((2 ** relevant.get(doc, 0) - 1) / math.log2(index + 2) for index, doc in enumerate(ranking[:10]))
+        dcg = sum(
+            (2 ** relevant.get(doc, 0) - 1) / math.log2(index + 2)
+            for index, doc in enumerate(ranking[:10])
+        )
         ideal = sorted(relevant.values(), reverse=True)[:10]
         idcg = sum((2**gain - 1) / math.log2(index + 2) for index, gain in enumerate(ideal))
         ndcg = dcg / idcg if idcg else 0.0
@@ -279,16 +321,18 @@ class RetrievalMetric(ScalarMetric):
 class RougeLMetric(ScalarMetric):
     name = "rouge_l"
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         reference = _reference(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}
         try:
             from rouge_score import rouge_scorer
 
-            scores = rouge_scorer.RougeScorer(
-                ["rouge1", "rouge2", "rougeL", "rougeLsum"]
-            ).score(reference, gen.output)
+            scores = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL", "rougeLsum"]).score(
+                reference, gen.output
+            )
             detail = {
                 name: {
                     "precision": value.precision,
@@ -335,9 +379,7 @@ def _lcs_length(left: list[str], right: list[str]) -> int:
         current = [0]
         for index, other in enumerate(right, start=1):
             current.append(
-                previous[index - 1] + 1
-                if token == other
-                else max(previous[index], current[-1])
+                previous[index - 1] + 1 if token == other else max(previous[index], current[-1])
             )
         previous = current
     return previous[-1]
@@ -346,7 +388,9 @@ def _lcs_length(left: list[str], right: list[str]) -> int:
 class ChrfMetric(ScalarMetric):
     name = "chrf_pp"
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         reference = _reference(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}
@@ -357,7 +401,9 @@ class ChrfMetric(ScalarMetric):
 class BleuMetric(ScalarMetric):
     name = "sacrebleu"
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         reference = _reference(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}
@@ -370,14 +416,17 @@ class BleuMetric(ScalarMetric):
 
     def aggregate(self, values: list[ScoreValue]) -> AggregateValue:
         valid = [
-            value for value in values
-            if value.value is not None and "hypothesis" in value.detail
+            value for value in values if value.value is not None and "hypothesis" in value.detail
         ]
         metric = BLEU()
-        score = metric.corpus_score(
-            [str(value.detail["hypothesis"]) for value in valid],
-            [[str(value.detail["reference"]) for value in valid]],
-        ) if valid else None
+        score = (
+            metric.corpus_score(
+                [str(value.detail["hypothesis"]) for value in valid],
+                [[str(value.detail["reference"]) for value in valid]],
+            )
+            if valid
+            else None
+        )
         return AggregateValue(
             self.name,
             self.version,
@@ -395,7 +444,9 @@ class MeteorMetric(ScalarMetric):
     name = "meteor"
     config = {"language": "en", "resources": ["wordnet"]}
 
-    def value(self, gen: Generation, case: Case, ctx: ScoringContext) -> tuple[float | None, dict[str, Any]]:
+    def value(
+        self, gen: Generation, case: Case, ctx: ScoringContext
+    ) -> tuple[float | None, dict[str, Any]]:
         reference = _reference(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}

@@ -47,7 +47,9 @@ def power(
     sample_size = required_sample_size(
         baseline_rate, minimum_detectable_effect, alpha=alpha, power=desired_power
     )
-    console.print(json.dumps({"sample_size_per_arm": sample_size, "power": desired_power}, indent=2))
+    console.print(
+        json.dumps({"sample_size_per_arm": sample_size, "power": desired_power}, indent=2)
+    )
 
 
 @app.command("score")

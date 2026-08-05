@@ -13,8 +13,25 @@ from evalharness.scoring.catalog import (
 
 def generation(output: str) -> Generation:
     return Generation(
-        None, "run", "case", 0, output, [], None, FailureOutcome.PASSED,
-        None, None, 0.0, None, None, None, 1, [], False, None, None,
+        None,
+        "run",
+        "case",
+        0,
+        output,
+        [],
+        None,
+        FailureOutcome.PASSED,
+        None,
+        None,
+        0.0,
+        None,
+        None,
+        None,
+        1,
+        [],
+        False,
+        None,
+        None,
     )
 
 

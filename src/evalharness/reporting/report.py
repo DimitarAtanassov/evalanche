@@ -33,10 +33,13 @@ _templates = Environment(
 class RunReport:
     schema_version: str
     run_id: str
+    run_status: str
     config_sha256: str
     model_digest: str
     dataset_sha256: str
     coverage: float
+    planned_generations: int
+    written_generations: int
     coverage_floor: float
     publishable: bool
     pass_rate: float
@@ -96,15 +99,21 @@ async def build_report(run_id: uuid.UUID, coverage_floor: float = 0.98) -> RunRe
     total_cost = sum(float(row.cost_usd or 0) for row in generations)
     retries = sum(max(0, row.attempts - 1) for row in generations)
     cached = sum(row.cached for row in generations)
+    written = len(generations)
     return RunReport(
         schema_version=SCHEMA_VERSION,
         run_id=str(run_id),
+        run_status=run.status,
         config_sha256=run.config_sha256,
         model_digest=model.resolved_version if model else "",
         dataset_sha256=dataset.content_sha256 if dataset else "",
         coverage=coverage,
+        planned_generations=planned,
+        written_generations=written,
         coverage_floor=coverage_floor,
-        publishable=coverage >= coverage_floor and len(generations) == planned,
+        publishable=(
+            run.status == "completed" and written == planned and coverage >= coverage_floor
+        ),
         pass_rate=pass_rate,
         pass_rate_ci=wilson_interval(passed, len(exact)),
         outcome_histogram=dict(sorted(Counter(row.outcome for row in generations).items())),

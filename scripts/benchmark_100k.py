@@ -20,8 +20,25 @@ def main() -> None:
         expected = str(index % 100)
         case = Case(str(index), TaskType.QA_SHORT, {}, reference_answer=expected)
         generation = Generation(
-            None, "benchmark", case.external_id, 0, expected, [], None,
-            FailureOutcome.PASSED, None, None, 0.0, None, None, None, 0, [], False, None, None,
+            None,
+            "benchmark",
+            case.external_id,
+            0,
+            expected,
+            [],
+            None,
+            FailureOutcome.PASSED,
+            None,
+            None,
+            0.0,
+            None,
+            None,
+            None,
+            0,
+            [],
+            False,
+            None,
+            None,
         )
         score = engine.score_one(generation, case, ["exact_match"])[0]
         passed += int(bool(score.passed))

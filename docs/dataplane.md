@@ -23,9 +23,10 @@ sequenceDiagram
     Executor->>Cache: put(cache_key, response)
   end
   Executor->>Store: INSERT generation (immutable)
-  Executor->>Scorer: score(generation, case)
-  Scorer->>Store: INSERT score rows
+  Scorer->>Store: INSERT score rows (separate stage)
 ```
+
+Generation and scoring are separate stages. `evalctl run` executes generations then calls `ScoringEngine.rescore_run`; reporting is read-only over stored rows.
 
 ## Cache key
 
@@ -35,48 +36,59 @@ SHA-256 of canonical JSON:
 {provider, model_version, rendered_prompt, decode_params, adapter_version}
 ```
 
-Hits set `generations.cached = true` and skip inference.
+Hits set `generations.cached = true` and skip inference. Cache puts are race-safe (`ON CONFLICT DO NOTHING`).
 
 ## Outcome taxonomy
 
-Every case terminates in exactly one outcome (mutually exclusive):
+Every case terminates in exactly one **generation** outcome (mutually exclusive):
 
-| Outcome | Meaning | In model-quality denominator? |
-|---------|---------|-------------------------------|
-| `passed` | Scored and passed | Yes |
-| `failed_score` | Generated OK, metric failed | Yes |
-| `refused` / `truncated` / `empty_output` / `content_filtered` / `model_error` | Model-side | Yes (quality) |
+| Outcome | Meaning | In coverage denominator? |
+|---------|---------|--------------------------|
+| `passed` | Provider returned usable output | Yes |
+| `refused` / `truncated` / `empty_output` / `content_filtered` / `model_error` | Model-side | Yes |
 | `harness_timeout` / `harness_error` | Infrastructure | **No** — coverage loss |
 | `skipped` | Explicitly skipped | No |
 
-**Coverage** = `1 − harness_failures / total`. Default publish floor: `0.98`. Below floor → report marked non-publishable; CLI exits `2`.
+**Pass/fail quality** is derived from versioned `scores` rows (`passed` on metrics such as `exact_match`), not from mutating `generations.outcome` after scoring.
+
+## Coverage and publishability
+
+- **Planned cardinality** = `cases × repeats`
+- **Coverage** = `(written_generations − harness_failures) / planned`
+- **Publishable** only when `run.status == completed`, `written == planned`, and coverage ≥ floor (default `0.98`). Partial or cancelled runs are withheld.
 
 ## Retries
 
 - Retry only `RETRYABLE_TRANSIENT` and `RETRYABLE_RATE_LIMIT`
-- Full jitter backoff: base `0.5s`, cap `30s`, max 5 retries
+- Full jitter backoff with real `await asyncio.sleep`: base `0.5s`, cap `30s`, max 5 retries
+- Honor HTTP `Retry-After` when present (max of jitter and server hint)
 - Every attempt appended to `attempt_log` (retries are data)
 
 ## Timeouts (three layers)
 
-1. Per-request — provider HTTP timeout
-2. Per-case — including retries (`default_case_timeout_s`)
-3. Per-run — wall budget (configured at settings; service enforcement comes with the HTTP API)
+1. **Per-request** — `asyncio.wait_for` around provider `generate` (`default_request_timeout_s`); `httpx.TimeoutException` maps to harness timeout taxonomy
+2. **Per-case** — wall clock including retries (`default_case_timeout_s`); writes idempotent `harness_timeout` generation row on expiry
+3. **Per-run** — executor wall budget (`default_run_timeout_s`); triggers drain then `failed` / `cancelled` status
+
+## Concurrency and shutdown
+
+- Bounded worker-queue pool (not one `Task` per case) for large runs
+- SIGTERM/SIGINT sets a shutdown flag; workers drain for `default_shutdown_drain_timeout_s`, then cancel
+- Final run status: `completed` only when all planned keys are written; otherwise `failed` or `cancelled`
 
 ## Resume
 
-`UNIQUE (run_id, case_id, repeat_idx)` makes checkpoints idempotent. `--resume RUN_ID` re-plans only missing keys.
+`UNIQUE (run_id, case_id, repeat_idx)` plus `ON CONFLICT DO NOTHING` makes checkpoints idempotent. `--resume RUN_ID` re-plans missing keys and verifies dataset/template/model/config FKs and `config_sha256` match the stored run.
 
 ## Reporting
 
-After execution, the reporter:
+After execution and scoring, the reporter:
 
-1. Loads generations + scores for the run
-2. Computes coverage, outcome histogram, finish-reason histogram
-3. Computes latency p50/p90/p95/p99/max + mean (mean labeled separately)
-4. Computes pass rate with **Wilson 95% CI** on non-harness cases
-5. Writes `{run_id}.json` and `{run_id}.html`
-6. Persists `metric_aggregates`
+1. Loads generations, scores, and metric aggregates (read-only)
+2. Computes coverage from planned cardinality and harness outcomes
+3. Computes pass rate with **Wilson 95% CI** from score rows
+4. Writes `{run_id}.json`, `{run_id}.html`, and `{run_id}.xml`
+5. Refuses publishability unless the run completed with full planned coverage
 
 ## Offline PoC path
 
