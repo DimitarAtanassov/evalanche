@@ -4,6 +4,7 @@ System design for **evalanche** (`evalctl`). Read these before changing core har
 
 | Doc | Audience | Contents |
 |-----|----------|----------|
+| [**Engineer onboarding & ops guide**](guide.md) | New engineers / on-call | End-to-end mental model, CLI, schema, metrics, logs, runbook (start here) |
 | [Architecture](architecture.md) | All engineers | Components, boundaries, versioning |
 | [Data plane](dataplane.md) | Backend / harness | Case → generate → score → report flow |
 | [Database schema](schema.md) | Backend / data | Tables, immutability, resume keys |

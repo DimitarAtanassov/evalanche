@@ -22,6 +22,7 @@ Reproducible, resumable LLM evaluation harness. The **`evalctl`** CLI validates 
 
 | Doc | Description |
 |-----|-------------|
+| [docs/guide.md](docs/guide.md) | **Engineer onboarding & operations** (start here) |
 | [docs/architecture.md](docs/architecture.md) | Components and seams |
 | [docs/dataplane.md](docs/dataplane.md) | Case → generate → score → report |
 | [docs/schema.md](docs/schema.md) | PostgreSQL model |
