@@ -1,0 +1,28 @@
+adapter:
+  name: synthetic_qa
+  sample_seed: 42
+  sample_size: 5
+  version: 1.0.0
+contamination_risk: low
+content_sha256: 464baa39cddc43d26baf1efc0ab442bd3518cea486006908259d6c7ee18ce9c0
+created_at: '2026-08-05'
+license: CC0-1.0
+name: synthetic-qa
+pii_scrub_procedure: docs/datasets.md#privacy-and-pii
+pii_scrubbed: true
+schema_version: '0.1'
+slices:
+- domain
+source:
+  attribution: Repository-authored synthetic fixture; no public-source attribution.
+  canonical_url: repo://tools/datasets/sources/synthetic_qa.jsonl
+  id: synthetic_qa
+  redistributable_smoke: true
+  revision: synthetic-v1
+  revision_digest: sha256:0393573e60034be63c26fc6c6241abe4bf39d2eecdd1522a197765af0eb57561
+split: dev
+task_metrics:
+- squad_f1
+- exact_match
+tier: smoke
+version: 1.0.0

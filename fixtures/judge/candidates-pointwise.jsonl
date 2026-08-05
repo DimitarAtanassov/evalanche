@@ -1,0 +1,5 @@
+{"case_id": "case-00000", "generation_id": "gen-00000", "prompt": "What is 0 plus one?", "candidate_text": "1", "reference": "1"}
+{"case_id": "case-00001", "generation_id": "gen-00001", "prompt": "What is 1 plus one?", "candidate_text": "2", "reference": "2"}
+{"case_id": "case-00002", "generation_id": "gen-00002", "prompt": "What is 2 plus one?", "candidate_text": "3", "reference": "3"}
+{"case_id": "case-00003", "generation_id": "gen-00003", "prompt": "What is 3 plus one?", "candidate_text": "4", "reference": "4"}
+{"case_id": "case-00004", "generation_id": "gen-00004", "prompt": "What is 4 plus one?", "candidate_text": "5", "reference": "5"}

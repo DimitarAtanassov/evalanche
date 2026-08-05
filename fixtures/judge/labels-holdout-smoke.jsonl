@@ -1,0 +1,3 @@
+{"schema_version": "0.1", "rubric_name": "helpfulness", "rubric_version": "1.0.0", "case_id": "case-00000", "label_shape": "ordinal_score", "value": 4, "split": "holdout", "label_set_id": "helpfulness-holdout-v1"}
+{"schema_version": "0.1", "rubric_name": "helpfulness", "rubric_version": "1.0.0", "case_id": "case-00001", "label_shape": "ordinal_score", "value": 4, "split": "holdout", "label_set_id": "helpfulness-holdout-v1"}
+{"schema_version": "0.1", "rubric_name": "helpfulness", "rubric_version": "1.0.0", "case_id": "case-00002", "label_shape": "ordinal_score", "value": 4, "split": "holdout", "label_set_id": "helpfulness-holdout-v1"}

@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ suite.name }} benchmark suite</title>
+  <style>
+    :root { --ink:#111820; --muted:#5b6675; --line:#e4e8ee; --accent:#2f5bd7; --bad:#b42318; }
+    * { box-sizing: border-box; }
+    body { margin:0; color:var(--ink); background:#f6f8fb; font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { max-width:1280px; margin:0 auto; padding:32px 24px 80px; }
+    header, section { background:white; border:1px solid var(--line); border-radius:10px; padding:22px; margin-bottom:18px; }
+    h1 { margin:0 0 6px; font-size:28px; } h2 { margin:0 0 16px; font-size:20px; } h3 { font-size:15px; }
+    .muted, .digest { color:var(--muted); } .digest { font-family:ui-monospace,monospace; overflow-wrap:anywhere; }
+    .chart { min-height:180px; margin-bottom:12px; }
+    .scroll { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; margin:8px 0 18px; }
+    caption { text-align:left; font-weight:650; padding:6px 0; }
+    th, td { border-bottom:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+    th { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
+    .yes { color:#067647; font-weight:650; } .no { color:var(--bad); font-weight:650; }
+    .example { border-left:3px solid var(--bad); padding:4px 14px; margin:14px 0; }
+    code { font-family:ui-monospace,monospace; }
+  </style>
+  {% if runtime %}<script>{{ runtime | safe }}</script>{% endif %}
+</head>
+<body>
+<main>
+  <header>
+    <h1>{{ suite.name }}</h1>
+    {% if suite.description %}<p>{{ suite.description }}</p>{% endif %}
+    <p class="digest">Suite digest: {{ suite.suite_digest }}</p>
+  </header>
+
+  <section aria-labelledby="members-title">
+    <h2 id="members-title">Declared members and publishability</h2>
+    <div class="scroll"><table>
+      <caption>Coverage matrix</caption>
+      <thead><tr><th>Member</th><th>Dataset</th><th>Role</th><th>Coverage</th><th>Written / planned</th><th>Publishable</th><th>Model digest</th></tr></thead>
+      <tbody>{% for row in suite.coverage_matrix %}{% set member = suite.members | selectattr("run_id", "equalto", row.run_id) | first %}
+        <tr><td>{{ row.label }}</td><td>{{ row.dataset }}</td><td>{{ member.role }}</td><td>{{ "%.2f%%" | format(row.coverage * 100) }}</td><td>{{ row.written_generations }} / {{ row.planned_generations }}</td><td class="{{ 'yes' if row.publishable else 'no' }}">{{ row.publishable }}</td><td class="digest">{{ member.model_digest }}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+    {% if suite.exclusions %}
+      <h3>Leaderboard exclusions</h3>
+      <ul>{% for item in suite.exclusions %}<li><code>{{ item.run_id }}</code>: {{ item.reason }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+
+  {% if leaderboard_rows %}
+  <section aria-labelledby="leaderboard-title">
+    <h2 id="leaderboard-title">Declared-member leaderboards</h2>
+    {{ charts.leaderboard | safe }}
+    <div class="scroll"><table>
+      <caption>Accessible leaderboard data, non-publishable members excluded</caption>
+      <thead><tr><th>Dataset / metric</th><th>Member</th><th>Score</th><th>95% CI</th><th>n</th><th>Dataset digest</th><th>Model digest</th></tr></thead>
+      <tbody>{% for row in leaderboard_rows %}<tr><td>{{ row.group }}</td><td>{{ row.label }}</td><td>{{ "%.4f" | format(row.value) }}</td><td>{% if row.ci_low is not none %}[{{ "%.4f" | format(row.ci_low) }}, {{ "%.4f" | format(row.ci_high) }}]{% else %}not available{% endif %}</td><td>{{ row.n }}</td><td class="digest">{{ row.dataset_sha256 }}</td><td class="digest">{{ row.model_digest }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endif %}
+
+  {% if suite.quality_tables %}
+  <section aria-labelledby="quality-title">
+    <h2 id="quality-title">Quality by domain and task</h2>
+    {% for table in suite.quality_tables %}
+    <div class="scroll"><table>
+      <caption>{{ table.dimension }}: {{ table.value }}</caption>
+      <thead><tr><th>Member</th><th>Dataset</th><th>Metric</th><th>Score</th><th>95% CI</th><th>n</th><th>Dataset digest</th><th>Model digest</th></tr></thead>
+      <tbody>{% for row in table.rows %}<tr><td>{{ row.label }}</td><td>{{ row.dataset }}</td><td>{{ row.metric }}</td><td>{{ "%.4f" | format(row.value) }}</td><td>{% if row.ci_low is not none %}[{{ "%.4f" | format(row.ci_low) }}, {{ "%.4f" | format(row.ci_high) }}]{% else %}not available{% endif %}</td><td>{{ row.n }}</td><td class="digest">{{ row.dataset_sha256 }}</td><td class="digest">{{ row.model_digest }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if slice_rows %}
+  <section aria-labelledby="slices-title">
+    <h2 id="slices-title">Weakest slices first</h2>
+    {{ charts.slices | safe }}
+    <div class="scroll"><table>
+      <caption>Accessible slice data, weakest first within each member</caption>
+      <thead><tr><th>Member</th><th>Dataset</th><th>Metric</th><th>Slice</th><th>Score</th><th>95% CI</th><th>n</th><th>Dataset digest</th><th>Model digest</th></tr></thead>
+      <tbody>{% for row in slice_rows %}<tr><td>{{ row.label }}</td><td>{{ row.dataset }}</td><td>{{ row.metric }}</td><td>{{ row.slice }}</td><td>{{ "%.4f" | format(row.value) }}</td><td>{% if row.ci_low is not none %}[{{ "%.4f" | format(row.ci_low) }}, {{ "%.4f" | format(row.ci_high) }}]{% else %}not available{% endif %}</td><td>{{ row.n }}</td><td class="digest">{{ row.dataset_sha256 }}</td><td class="digest">{{ row.model_digest }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endif %}
+
+  {% if suite.comparisons %}
+  <section aria-labelledby="comparisons-title">
+    <h2 id="comparisons-title">Paired comparisons</h2>
+    <div class="scroll"><table>
+      <caption>Aligned non-flaky paired results</caption>
+      <thead><tr><th>Baseline</th><th>Candidate</th><th>Metric</th><th>Delta</th><th>95% CI</th><th>n</th><th>p</th><th>BH significant</th><th>Cohen's h</th><th>Flaky exclusions</th></tr></thead>
+      <tbody>{% for row in suite.comparisons %}<tr><td>{{ row.baseline_run_id }}</td><td>{{ row.candidate_run_id }}</td><td>{{ row.metric }}</td><td>{{ "%.4f" | format(row.absolute_delta) }}</td><td>[{{ "%.4f" | format(row.ci_low) }}, {{ "%.4f" | format(row.ci_high) }}]</td><td>{{ row.n }}</td><td>{{ "%.4g" | format(row.p_value) }}</td><td>{{ row.significant_bh }}</td><td>{{ "%.4f" | format(row.cohens_h) }}</td><td>{{ row.excluded_flaky_cases | length }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endif %}
+
+  {% if suite.failure_gallery %}
+  <section aria-labelledby="failures-title">
+    <h2 id="failures-title">Bounded failure examples</h2>
+    {% for row in suite.failure_gallery %}<article class="example">
+      <h3>{{ row.label }} · {{ row.case_id }} · {{ row.outcome }}</h3>
+      {% if row.input %}<p><strong>Input:</strong> {{ row.input }}</p>{% endif %}
+      {% if row.reference %}<p><strong>Reference:</strong> {{ row.reference }}</p>{% endif %}
+      {% if row.output %}<p><strong>Output:</strong> {{ row.output }}</p>{% endif %}
+    </article>{% endfor %}
+  </section>
+  {% endif %}
+
+  {%- if suite.calibrations %}
+  <section aria-labelledby="calibrations-title">
+    <h2 id="calibrations-title">Judge calibration</h2>
+    <div class="scroll"><table>
+      <caption>Holdout calibration and gate eligibility</caption>
+      <thead><tr><th>Rubric</th><th>Metric</th><th>Agreement</th><th>Threshold</th><th>n holdout</th><th>Family separation</th><th>Gating allowed</th><th>Calibration digest</th></tr></thead>
+      <tbody>{% for row in suite.calibrations %}<tr><td>{{ row.rubric_name }}@{{ row.rubric_version }}</td><td>{{ row.agreement_metric }}</td><td>{% if row.agreement_holdout is not none %}{{ "%.4f" | format(row.agreement_holdout) }}{% else %}not available{% endif %}</td><td>{{ "%.4f" | format(row.threshold) }}</td><td>{{ row.n_holdout }}</td><td>{{ row.family_separation_ok }}</td><td class="{{ 'yes' if row.gating_allowed else 'no' }}">{{ row.gating_allowed }}</td><td class="digest">{{ row.calibration_digest }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {%- endif %}
+
+  {%- if suite.judge_artifacts %}
+  <section aria-labelledby="judgments-title">
+    <h2 id="judgments-title">Judge artifacts</h2>
+    <div class="scroll"><table>
+      <caption>Versioned pointwise and pairwise judgment summaries</caption>
+      <thead><tr><th>Mode</th><th>Rubric</th><th>Judge model</th><th>Resolved version</th><th>Calibration digest</th><th>Gating allowed</th></tr></thead>
+      <tbody>{% for row in suite.judge_artifacts %}<tr><td>{{ row.mode }}</td><td>{{ row.rubric_name }}@{{ row.rubric_version }}</td><td>{{ row.judge_model.provider }}/{{ row.judge_model.model }}</td><td class="digest">{{ row.judge_model.resolved_version }}</td><td class="digest">{{ row.calibration_digest or 'not attached' }}</td><td class="{{ 'yes' if row.gating_allowed else 'no' }}">{{ row.gating_allowed }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {%- endif %}
+
+  {%- if suite.rag_artifacts %}
+  <section aria-labelledby="rag-title">
+    <h2 id="rag-title">RAG evidence</h2>
+    <div class="scroll"><table>
+      <caption>Retrieval, faithfulness, and citation signals remain separate</caption>
+      <thead><tr><th>Run</th><th>Model digest</th><th>Retrieval</th><th>Faithfulness</th><th>Citation attribution</th><th>Gating allowed</th></tr></thead>
+      <tbody>{% for row in suite.rag_artifacts %}<tr><td>{{ row.run_id }}</td><td class="digest">{{ row.model_digest }}</td><td>{{ row.retrieval_status }}</td><td>{{ row.faithfulness_status }}</td><td>{% if row.citation_attribution.value is not none %}{{ "%.4f" | format(row.citation_attribution.value) }} (n={{ row.citation_attribution.n }}){% else %}{{ row.citation_attribution.status }}{% endif %}</td><td class="no">{{ row.gating_allowed }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+  {%- endif %}
+
+  <section aria-labelledby="ops-title">
+    <h2 id="ops-title">Operations and cost</h2>
+    {% if latency_rows %}
+      {{ charts.latency | safe }}
+      <div class="scroll"><table>
+        <caption>Accessible p95 latency data</caption>
+        <thead><tr><th>Member</th><th>p95 latency (ms)</th></tr></thead>
+        <tbody>{% for row in latency_rows %}<tr><td>{{ row.label }}</td><td>{{ "%.2f" | format(row.p95_ms) }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+    {% endif %}
+    <div class="scroll"><table>
+      <caption>Cost, retries, cache, and harness failures</caption>
+      <thead><tr><th>Member</th><th>Total cost USD</th><th>Cost / correct</th><th>Retries</th><th>Cache hits</th><th>Cache rate</th><th>Harness failures</th></tr></thead>
+      <tbody>{% for row in suite.ops.members %}<tr><td>{{ row.label }}</td><td>{{ "%.6f" | format(row.cost_usd_total) }}</td><td>{% if row.cost_per_correct is not none %}{{ "%.6f" | format(row.cost_per_correct) }}{% else %}not available{% endif %}</td><td>{{ row.retries }}</td><td>{{ row.cache_hits }}</td><td>{{ "%.2f%%" | format(row.cache_rate * 100) }}</td><td>{{ row.harness_failures }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </section>
+</main>
+</body>
+</html>

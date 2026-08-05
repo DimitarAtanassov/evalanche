@@ -46,8 +46,11 @@ The `RunReport` (`reporting/report.py`) carries the run's identity and verdict:
   input / reference / output rows with primary-metric pass/fail).
 - **Coverage** — `planned_generations`, `written_generations`, `coverage`,
   `coverage_floor`, and the `publishable` verdict.
-- **Quality** — `pass_rate` with its denominator `pass_rate_n` and a Wilson 95%
-  `pass_rate_ci`, the `primary_metric` that pass rate is computed from, and the
+- **Quality** — for Bernoulli primaries, `pass_rate` with its denominator `pass_rate_n`
+  and a Wilson 95% `pass_rate_ci`; for continuous primaries (explicit metric
+  `threshold <= 0`, e.g. `retrieval_ndcg_10`), the same fields carry the overall
+  aggregate **mean** with `headline_kind: "mean"`, `pass_rate_ci` left undefined, and
+  no invented pass fraction. Always includes the `primary_metric` and the
   `metric_aggregates` (value, CI, method, config hash) for the overall slice **and each
   slice rollup**.
 - **Operational** — `outcome_histogram`, `harness_failures`, `latency` percentiles
@@ -64,7 +67,7 @@ disclosure rather than separation:
 | Section | Question it answers | Contains |
 |---------|---------------------|----------|
 | **Verdict** | Can I trust this run? | Publishable badge plus each gate itemized with its actual value |
-| **Headline** | What are the numbers? | Pass rate with CI and n, coverage against floor, cost per correct, latency p95 |
+| **Headline** | What are the numbers? | Pass rate (or primary mean for continuous metrics) with CI/n when applicable, coverage against floor, cost per correct, latency p95 |
 | **Context** | What was evaluated? | Model, dataset, decode params, truncated prompt, sampled inputs/outputs |
 | **Quality** | How good is the model? | Metric scores with CIs; pass rate by slice, worst first |
 | **Reliability** | What broke, whose fault? | Outcomes split into model outcomes and harness failures; finish reasons, retries, cache |
@@ -84,8 +87,10 @@ These are the same invariants enforced elsewhere, made visible in the report:
 - **Coverage uses planned `(case, repeat)` cardinality as its denominator.** A partial
   run cannot become publishable simply because missing rows are absent — see
   [dataplane.md](dataplane.md#coverage-and-publishability).
-- **No point estimate without an interval.** The pass rate always ships with its Wilson
-  CI ([principle #4](principles.md)).
+- **No point estimate without an interval when the estimate is a pass rate.** Bernoulli
+  headlines always ship a Wilson CI ([principle #4](principles.md)). Continuous
+  primaries headline the overall mean instead and omit a pass-rate CI rather than
+  inventing one from a threshold of `0`.
 - **Harness failures are excluded** from the model‑quality denominator and shown
   separately in the outcome histogram — the chart colors and labels the two categories
   differently so the distinction survives a glance.

@@ -1,0 +1,5 @@
+{"id":"math-001","task_type":"qa_short","inputs":{"question":"What is 14 plus 9?"},"reference_answer":"23","slices":{"domain":"math"}}
+{"id":"math-002","task_type":"qa_short","inputs":{"question":"What is 7 multiplied by 8?"},"reference_answer":"56","slices":{"domain":"math"}}
+{"id":"math-003","task_type":"qa_short","inputs":{"question":"What is 81 divided by 9?"},"reference_answer":"9","slices":{"domain":"math"}}
+{"id":"math-004","task_type":"qa_short","inputs":{"question":"What is 50 minus 17?"},"reference_answer":"33","slices":{"domain":"math"}}
+{"id":"math-005","task_type":"qa_short","inputs":{"question":"What is 2.5 plus 1.25?"},"reference_answer":"3.75","slices":{"domain":"math"}}

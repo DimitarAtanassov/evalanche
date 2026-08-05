@@ -1,0 +1,5 @@
+{"id":"finance-001","task_type":"qa_short","inputs":{"question":"A fictional shop earns 120 credits and spends 45 credits. What is its net amount?"},"reference_answer":"75","slices":{"domain":"finance"}}
+{"id":"finance-002","task_type":"qa_short","inputs":{"question":"A fictional bond pays 8 credits twice. What is the total payment?"},"reference_answer":"16","slices":{"domain":"finance"}}
+{"id":"finance-003","task_type":"qa_short","inputs":{"question":"A fictional company has 200 credits of assets and 80 credits of liabilities. What is equity?"},"reference_answer":"120","slices":{"domain":"finance"}}
+{"id":"finance-004","task_type":"qa_short","inputs":{"question":"Ten fictional shares each cost 6 credits. What is the total cost?"},"reference_answer":"60","slices":{"domain":"finance"}}
+{"id":"finance-005","task_type":"qa_short","inputs":{"question":"A fictional budget of 90 credits is reduced by 10 percent. What amount remains?"},"reference_answer":"81","slices":{"domain":"finance"}}

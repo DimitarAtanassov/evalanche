@@ -1,0 +1,3 @@
+{"case_id": "pair-00001", "a_generation_id": "gen-A-1", "b_generation_id": "gen-B-1", "a_model_label": "llama3.2:3b", "b_model_label": "qwen2.5:3b", "prompt": "Summarize the passage.", "a_text": "Candidate A summary.", "b_text": "Candidate B summary."}
+{"case_id": "pair-00002", "a_generation_id": "gen-A-2", "b_generation_id": "gen-C-1", "a_model_label": "llama3.2:3b", "b_model_label": "mistral:7b", "prompt": "Summarize the passage.", "a_text": "Candidate A summary two.", "b_text": "Candidate C summary."}
+{"case_id": "pair-flip", "a_generation_id": "gen-A-3", "b_generation_id": "gen-B-2", "a_model_label": "qwen2.5:3b", "b_model_label": "mistral:7b", "prompt": "Summarize the passage.", "a_text": "Qwen text.", "b_text": "Mistral text."}

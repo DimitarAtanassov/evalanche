@@ -124,11 +124,25 @@
 
 <div class="kpis">
   <div class="kpi">
-    <div class="kpi-label">Pass rate — {{ report.primary_metric }}</div>
-    <div class="kpi-value">{{ "%.1f%%"|format(report.pass_rate * 100) }}</div>
-    <div class="kpi-sub">{{ report.confidence_method }} CI
+    <div class="kpi-label">
+      {%- if report.headline_kind == "mean" -%}
+      Mean — {{ report.primary_metric }}
+      {%- else -%}
+      Pass rate — {{ report.primary_metric }}
+      {%- endif -%}
+    </div>
+    <div class="kpi-value">
+      {%- if report.pass_rate is none %}—{% else %}{{ "%.1f%%"|format(report.pass_rate * 100) }}{% endif -%}
+    </div>
+    <div class="kpi-sub">
+      {%- if report.pass_rate_ci.low is not none and report.pass_rate_ci.high is not none -%}
+      {{ report.confidence_method }} CI
       {{ "%.1f"|format(report.pass_rate_ci.low * 100) }}–{{ "%.1f%%"|format(report.pass_rate_ci.high * 100) }}
-      · n={{ "{:,}".format(report.pass_rate_n) }}</div>
+      · n={{ "{:,}".format(report.pass_rate_n) }}
+      {%- else -%}
+      {{ report.confidence_method }} · n={{ "{:,}".format(report.pass_rate_n) }}
+      {%- endif -%}
+    </div>
   </div>
   <div class="kpi">
     <div class="kpi-label">Coverage</div>

@@ -69,6 +69,7 @@ def _report() -> RunReport:
         coverage_floor=0.98,
         publishable=True,
         primary_metric="exact_match",
+        headline_kind="pass_rate",
         pass_rate=0.8,
         pass_rate_n=5,
         pass_rate_ci=(0.5, 1.0),

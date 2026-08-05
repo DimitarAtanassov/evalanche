@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
+from jinja2 import Environment
 
 from evalharness.config import get_settings
 from evalharness.core.enums import ErrorClass, FailureOutcome, FinishReason
@@ -137,10 +138,8 @@ class GracefulShutdown:
 
 
 def render_prompt(template: str, case: Case) -> str:
-    rendered = template
-    for key, value in case.inputs.items():
-        rendered = rendered.replace(f"{{{{{key}}}}}", str(value))
-    return rendered
+    """Render a trusted local template against case inputs."""
+    return Environment(autoescape=False).from_string(template).render(**case.inputs)
 
 
 def classify_outcome(

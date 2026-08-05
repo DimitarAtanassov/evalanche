@@ -1,0 +1,19 @@
+schema_version: '0.1'
+name: helpfulness
+version: 1.0.0
+mode: pointwise
+scale:
+  min: 1
+  max: 5
+  anchors:
+    1: Useless or wrong
+    5: Fully helpful and correct
+instructions: 'Reason step by step. Score only after reasoning.
+
+  '
+require_reasoning_before_score: true
+calibration:
+  agreement_threshold: 0.6
+  agreement_metric: cohen_kappa
+  min_holdout_n: 150
+  min_dev_n: 50

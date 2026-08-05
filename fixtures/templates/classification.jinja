@@ -1,0 +1,8 @@
+Return exactly one label from this list and no other text:
+{{ labels | join(", ") }}
+
+{% if question %}Question: {{ question }}
+{% endif %}{% if context %}Context: {{ context }}
+{% endif %}{% if text %}Text: {{ text }}
+{% endif %}
+Label:

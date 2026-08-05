@@ -357,8 +357,10 @@ Usage: evalctl run [OPTIONS]
   --tenant TEXT                                      [default: default]
 ```
 
-After generations complete, `run` always rescores with `exact_match` and writes
-`{run_id}.json`, `{run_id}.html`, and `{run_id}.xml` under `--output`.
+After generations complete, `run` rescores with the pack's declared
+`task_metrics` (falling back to `exact_match` for a legacy manifest), headlines
+the report pass rate on the first of them, and writes `{run_id}.json`,
+`{run_id}.html`, and `{run_id}.xml` under `--output`.
 
 ### 4.3 `evalctl score`
 
@@ -1026,7 +1028,8 @@ Current built‑ins:
 `json_validity`, `meteor`, `normalized_levenshtein`, `numeric_assertion`,
 `retrieval_ndcg_10`, `rouge_l`, `sacrebleu`, `squad_f1`.
 
-`evalctl run` scores `exact_match` by default; use `runs rescore --metrics …` for the
+`evalctl run` scores the manifest's `task_metrics`, defaulting to `exact_match`
+only when the manifest declares none; use `runs rescore --metrics …` for the
 rest.
 
 ### 6.1 Deterministic / lexical

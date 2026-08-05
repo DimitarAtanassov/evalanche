@@ -1,0 +1,31 @@
+schema_version: "0.1"
+name: phase-5-golden
+description: "Two task families across small and large mock model configurations."
+member_runs:
+  - path: qa-baseline.json
+    role: baseline
+    label: "mock-small / squad-smoke"
+    domain: general
+    task: qa_short
+  - path: qa-candidate.json
+    role: candidate
+    label: "mock-large / squad-smoke"
+    domain: general
+    task: qa_short
+  - path: classification-baseline.json
+    role: baseline
+    label: "mock-small / news-smoke"
+    domain: news
+    task: classification
+  - path: classification-candidate.json
+    role: candidate
+    label: "mock-large / news-smoke"
+    domain: news
+    task: classification
+compares:
+  - path: qa-compare.json
+primary_metrics:
+  - dataset: squad-smoke
+    metric: exact_match
+  - dataset: news-smoke
+    metric: classification

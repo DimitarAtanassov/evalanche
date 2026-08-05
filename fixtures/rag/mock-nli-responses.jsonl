@@ -1,0 +1,5 @@
+{"case_id": "case-00001", "claim_index": 0, "doc_id": "d1", "label": "neutral"}
+{"case_id": "case-00001", "claim_index": 0, "doc_id": "d2", "label": "entailment"}
+{"case_id": "case-00001", "claim_index": 1, "doc_id": "d1", "label": "neutral"}
+{"case_id": "case-00001", "claim_index": 1, "doc_id": "d2", "label": "neutral"}
+{"case_id": "case-00002", "claim_index": 0, "doc_id": "d3", "label": "neutral"}

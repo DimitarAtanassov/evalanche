@@ -1,0 +1,6 @@
+{"case_id": "pair-00001", "swap_position": 0, "preference": "A", "reasoning": "A is clearer."}
+{"case_id": "pair-00001", "swap_position": 1, "preference": "B", "reasoning": "Original A still better after swap."}
+{"case_id": "pair-00002", "swap_position": 0, "preference": "A", "reasoning": "A wins."}
+{"case_id": "pair-00002", "swap_position": 1, "preference": "B", "reasoning": "A wins after swap."}
+{"case_id": "pair-flip", "swap_position": 0, "preference": "A", "reasoning": "Prefers first."}
+{"case_id": "pair-flip", "swap_position": 1, "preference": "A", "reasoning": "Prefers first again (position bias)."}

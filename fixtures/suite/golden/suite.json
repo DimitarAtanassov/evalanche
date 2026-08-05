@@ -1,0 +1,693 @@
+{
+  "comparisons": [
+    {
+      "absolute_delta": 0.1111111111,
+      "artifact_sha256": "beabd8218d8500dd45462e1b0381e235d04f04b854e423d577d11271f0de3b30",
+      "baseline": 0.6666666667,
+      "baseline_run_id": "10000000-0000-4000-8000-000000000001",
+      "candidate": 0.7777777778,
+      "candidate_run_id": "10000000-0000-4000-8000-000000000002",
+      "ci_high": 0.3333333333,
+      "ci_low": -0.1111111111,
+      "cohens_h": 0.2506583334,
+      "excluded_flaky_cases": [
+        "qa-5"
+      ],
+      "metric": "exact_match",
+      "n": 9,
+      "p_value": 0.625,
+      "path": "qa-compare.json",
+      "relative_delta": 0.1666666667,
+      "significant_bh": false
+    }
+  ],
+  "coverage_matrix": [
+    {
+      "coverage": 1.0,
+      "coverage_floor": 0.98,
+      "dataset": "squad-smoke",
+      "label": "mock-small / squad-smoke",
+      "planned_generations": 10,
+      "publishable": true,
+      "run_id": "10000000-0000-4000-8000-000000000001",
+      "written_generations": 10
+    },
+    {
+      "coverage": 1.0,
+      "coverage_floor": 0.98,
+      "dataset": "squad-smoke",
+      "label": "mock-large / squad-smoke",
+      "planned_generations": 10,
+      "publishable": true,
+      "run_id": "10000000-0000-4000-8000-000000000002",
+      "written_generations": 10
+    },
+    {
+      "coverage": 0.8,
+      "coverage_floor": 0.98,
+      "dataset": "news-smoke",
+      "label": "mock-small / news-smoke",
+      "planned_generations": 10,
+      "publishable": false,
+      "run_id": "20000000-0000-4000-8000-000000000001",
+      "written_generations": 8
+    },
+    {
+      "coverage": 1.0,
+      "coverage_floor": 0.98,
+      "dataset": "news-smoke",
+      "label": "mock-large / news-smoke",
+      "planned_generations": 10,
+      "publishable": true,
+      "run_id": "20000000-0000-4000-8000-000000000002",
+      "written_generations": 10
+    }
+  ],
+  "description": "Two task families across small and large mock model configurations.",
+  "exclusions": [
+    {
+      "reason": "run status is failed; written generations 8/10; coverage 0.8000 below floor 0.9800",
+      "run_id": "20000000-0000-4000-8000-000000000001"
+    }
+  ],
+  "failure_gallery": [
+    {
+      "case_id": "qa-3",
+      "input": "Authorization: [REDACTED] What city is the capital?",
+      "label": "mock-small / squad-smoke",
+      "latency_ms": 9.0,
+      "metric": "exact_match",
+      "metric_value": 0.0,
+      "outcome": "passed",
+      "output": "Lyon",
+      "passed": false,
+      "reference": "Paris",
+      "repeat_idx": 0,
+      "run_id": "10000000-0000-4000-8000-000000000001",
+      "slices": {
+        "difficulty": "hard"
+      },
+      "task_type": "qa_short"
+    },
+    {
+      "case_id": "qa-8",
+      "input": "Which planet is nearest the Sun?",
+      "label": "mock-large / squad-smoke",
+      "latency_ms": 18.0,
+      "metric": "exact_match",
+      "metric_value": 0.0,
+      "outcome": "passed",
+      "output": "Venus",
+      "passed": false,
+      "reference": "Mercury",
+      "repeat_idx": 0,
+      "run_id": "10000000-0000-4000-8000-000000000002",
+      "slices": {
+        "difficulty": "easy"
+      },
+      "task_type": "qa_short"
+    },
+    {
+      "case_id": "news-4",
+      "input": "Quarterly earnings rose.",
+      "label": "mock-small / news-smoke",
+      "latency_ms": 22.0,
+      "metric": null,
+      "metric_value": null,
+      "outcome": "harness_timeout",
+      "output": null,
+      "passed": null,
+      "reference": "business",
+      "repeat_idx": 0,
+      "run_id": "20000000-0000-4000-8000-000000000001",
+      "slices": {
+        "topic": "business"
+      },
+      "task_type": "classification"
+    },
+    {
+      "case_id": "news-2",
+      "input": "Markets closed higher.",
+      "label": "mock-large / news-smoke",
+      "latency_ms": 19.0,
+      "metric": "classification",
+      "metric_value": 0.0,
+      "outcome": "passed",
+      "output": "sports",
+      "passed": false,
+      "reference": "business",
+      "repeat_idx": 0,
+      "run_id": "20000000-0000-4000-8000-000000000002",
+      "slices": {
+        "topic": "business"
+      },
+      "task_type": "classification"
+    }
+  ],
+  "leaderboards": [
+    {
+      "dataset": "news-smoke",
+      "entries": [
+        {
+          "ci_high": 0.9821,
+          "ci_low": 0.5958,
+          "dataset_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "label": "mock-large / news-smoke",
+          "model": "mock-large",
+          "model_digest": "mock-large-v2",
+          "n": 10,
+          "prompt": "classify-v2",
+          "role": "candidate",
+          "run_id": "20000000-0000-4000-8000-000000000002",
+          "value": 0.9
+        }
+      ],
+      "metric": "classification",
+      "task": "classification"
+    },
+    {
+      "dataset": "squad-smoke",
+      "entries": [
+        {
+          "ci_high": 0.9433,
+          "ci_low": 0.4902,
+          "dataset_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "label": "mock-large / squad-smoke",
+          "model": "mock-large",
+          "model_digest": "mock-large-v2",
+          "n": 10,
+          "prompt": "qa-v2",
+          "role": "candidate",
+          "run_id": "10000000-0000-4000-8000-000000000002",
+          "value": 0.8
+        },
+        {
+          "ci_high": 0.8922,
+          "ci_low": 0.3968,
+          "dataset_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "label": "mock-small / squad-smoke",
+          "model": "mock-small",
+          "model_digest": "mock-small-v1",
+          "n": 10,
+          "prompt": "qa-v1",
+          "role": "baseline",
+          "run_id": "10000000-0000-4000-8000-000000000001",
+          "value": 0.7
+        }
+      ],
+      "metric": "exact_match",
+      "task": "qa_short"
+    }
+  ],
+  "members": [
+    {
+      "artifact_sha256": "591d138e27cc41ea85399b9db45737427b9c8e6b2830c81d261c19cbb3c1ce67",
+      "coverage": 1.0,
+      "dataset": "squad-smoke",
+      "dataset_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "domain": "general",
+      "label": "mock-small / squad-smoke",
+      "model": "mock-small",
+      "model_digest": "mock-small-v1",
+      "path": "qa-baseline.json",
+      "primary_metric": {
+        "ci_high": 0.8922,
+        "ci_low": 0.3968,
+        "method": "wilson",
+        "metric": "exact_match",
+        "n": 10,
+        "value": 0.7
+      },
+      "prompt": "qa-v1",
+      "publishable": true,
+      "role": "baseline",
+      "run_id": "10000000-0000-4000-8000-000000000001",
+      "task": "qa_short"
+    },
+    {
+      "artifact_sha256": "fb1eb0c465d49240dcf407bb37a96c610f5f700d7a64d380c1bc8972bbe2010c",
+      "coverage": 1.0,
+      "dataset": "squad-smoke",
+      "dataset_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "domain": "general",
+      "label": "mock-large / squad-smoke",
+      "model": "mock-large",
+      "model_digest": "mock-large-v2",
+      "path": "qa-candidate.json",
+      "primary_metric": {
+        "ci_high": 0.9433,
+        "ci_low": 0.4902,
+        "method": "wilson",
+        "metric": "exact_match",
+        "n": 10,
+        "value": 0.8
+      },
+      "prompt": "qa-v2",
+      "publishable": true,
+      "role": "candidate",
+      "run_id": "10000000-0000-4000-8000-000000000002",
+      "task": "qa_short"
+    },
+    {
+      "artifact_sha256": "e564b50baabdb31523cb74543ddc703ab26e0198b44e2f72c89d088a1fa737fd",
+      "coverage": 0.8,
+      "dataset": "news-smoke",
+      "dataset_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "domain": "news",
+      "label": "mock-small / news-smoke",
+      "model": "mock-small",
+      "model_digest": "mock-small-v1",
+      "path": "classification-baseline.json",
+      "primary_metric": {
+        "ci_high": 0.8632,
+        "ci_low": 0.3057,
+        "method": "wilson",
+        "metric": "classification",
+        "n": 8,
+        "value": 0.625
+      },
+      "prompt": "classify-v1",
+      "publishable": false,
+      "role": "baseline",
+      "run_id": "20000000-0000-4000-8000-000000000001",
+      "task": "classification"
+    },
+    {
+      "artifact_sha256": "a1c7486d0bdf0b05dc7f2eda717c3996a28741b4f7d706855450a0d6d840d50f",
+      "coverage": 1.0,
+      "dataset": "news-smoke",
+      "dataset_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "domain": "news",
+      "label": "mock-large / news-smoke",
+      "model": "mock-large",
+      "model_digest": "mock-large-v2",
+      "path": "classification-candidate.json",
+      "primary_metric": {
+        "ci_high": 0.9821,
+        "ci_low": 0.5958,
+        "method": "wilson",
+        "metric": "classification",
+        "n": 10,
+        "value": 0.9
+      },
+      "prompt": "classify-v2",
+      "publishable": true,
+      "role": "candidate",
+      "run_id": "20000000-0000-4000-8000-000000000002",
+      "task": "classification"
+    }
+  ],
+  "name": "phase-5-golden",
+  "ops": {
+    "members": [
+      {
+        "cache_hits": 2,
+        "cache_rate": 0.2,
+        "cost_per_correct": 0.0014285714,
+        "cost_usd_total": 0.01,
+        "finish_reasons": {
+          "stop": 10
+        },
+        "harness_failures": 0,
+        "label": "mock-small / squad-smoke",
+        "latency_ms": {
+          "max": 16.0,
+          "mean": 9.0,
+          "p50": 8.0,
+          "p90": 12.0,
+          "p95": 14.0,
+          "p99": 15.0
+        },
+        "outcome_histogram": {
+          "passed": 10
+        },
+        "retries": 1,
+        "run_id": "10000000-0000-4000-8000-000000000001"
+      },
+      {
+        "cache_hits": 1,
+        "cache_rate": 0.1,
+        "cost_per_correct": 0.00375,
+        "cost_usd_total": 0.03,
+        "finish_reasons": {
+          "stop": 10
+        },
+        "harness_failures": 0,
+        "label": "mock-large / squad-smoke",
+        "latency_ms": {
+          "max": 26.0,
+          "mean": 17.0,
+          "p50": 15.0,
+          "p90": 22.0,
+          "p95": 24.0,
+          "p99": 25.0
+        },
+        "outcome_histogram": {
+          "passed": 10
+        },
+        "retries": 0,
+        "run_id": "10000000-0000-4000-8000-000000000002"
+      },
+      {
+        "cache_hits": 0,
+        "cache_rate": 0.0,
+        "cost_per_correct": 0.0016,
+        "cost_usd_total": 0.008,
+        "finish_reasons": {
+          "stop": 7,
+          "unknown": 1
+        },
+        "harness_failures": 1,
+        "label": "mock-small / news-smoke",
+        "latency_ms": {
+          "max": 22.0,
+          "mean": 11.0,
+          "p50": 9.0,
+          "p90": 18.0,
+          "p95": 20.0,
+          "p99": 21.0
+        },
+        "outcome_histogram": {
+          "harness_timeout": 1,
+          "passed": 7
+        },
+        "retries": 2,
+        "run_id": "20000000-0000-4000-8000-000000000001"
+      },
+      {
+        "cache_hits": 3,
+        "cache_rate": 0.3,
+        "cost_per_correct": 0.0038888889,
+        "cost_usd_total": 0.035,
+        "finish_reasons": {
+          "stop": 10
+        },
+        "harness_failures": 0,
+        "label": "mock-large / news-smoke",
+        "latency_ms": {
+          "max": 29.0,
+          "mean": 19.0,
+          "p50": 17.0,
+          "p90": 25.0,
+          "p95": 27.0,
+          "p99": 28.0
+        },
+        "outcome_histogram": {
+          "passed": 10
+        },
+        "retries": 0,
+        "run_id": "20000000-0000-4000-8000-000000000002"
+      }
+    ]
+  },
+  "quality_tables": [
+    {
+      "dimension": "domain",
+      "rows": [
+        {
+          "ci_high": 0.9433,
+          "ci_low": 0.4902,
+          "dataset": "squad-smoke",
+          "dataset_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "label": "mock-large / squad-smoke",
+          "method": "wilson",
+          "metric": "exact_match",
+          "model_digest": "mock-large-v2",
+          "n": 10,
+          "run_id": "10000000-0000-4000-8000-000000000002",
+          "value": 0.8
+        },
+        {
+          "ci_high": 0.8922,
+          "ci_low": 0.3968,
+          "dataset": "squad-smoke",
+          "dataset_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "label": "mock-small / squad-smoke",
+          "method": "wilson",
+          "metric": "exact_match",
+          "model_digest": "mock-small-v1",
+          "n": 10,
+          "run_id": "10000000-0000-4000-8000-000000000001",
+          "value": 0.7
+        }
+      ],
+      "value": "general"
+    },
+    {
+      "dimension": "domain",
+      "rows": [
+        {
+          "ci_high": 0.9821,
+          "ci_low": 0.5958,
+          "dataset": "news-smoke",
+          "dataset_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "label": "mock-large / news-smoke",
+          "method": "wilson",
+          "metric": "classification",
+          "model_digest": "mock-large-v2",
+          "n": 10,
+          "run_id": "20000000-0000-4000-8000-000000000002",
+          "value": 0.9
+        },
+        {
+          "ci_high": 0.8632,
+          "ci_low": 0.3057,
+          "dataset": "news-smoke",
+          "dataset_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "label": "mock-small / news-smoke",
+          "method": "wilson",
+          "metric": "classification",
+          "model_digest": "mock-small-v1",
+          "n": 8,
+          "run_id": "20000000-0000-4000-8000-000000000001",
+          "value": 0.625
+        }
+      ],
+      "value": "news"
+    },
+    {
+      "dimension": "task",
+      "rows": [
+        {
+          "ci_high": 0.9821,
+          "ci_low": 0.5958,
+          "dataset": "news-smoke",
+          "dataset_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "label": "mock-large / news-smoke",
+          "method": "wilson",
+          "metric": "classification",
+          "model_digest": "mock-large-v2",
+          "n": 10,
+          "run_id": "20000000-0000-4000-8000-000000000002",
+          "value": 0.9
+        },
+        {
+          "ci_high": 0.8632,
+          "ci_low": 0.3057,
+          "dataset": "news-smoke",
+          "dataset_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+          "label": "mock-small / news-smoke",
+          "method": "wilson",
+          "metric": "classification",
+          "model_digest": "mock-small-v1",
+          "n": 8,
+          "run_id": "20000000-0000-4000-8000-000000000001",
+          "value": 0.625
+        }
+      ],
+      "value": "classification"
+    },
+    {
+      "dimension": "task",
+      "rows": [
+        {
+          "ci_high": 0.9433,
+          "ci_low": 0.4902,
+          "dataset": "squad-smoke",
+          "dataset_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "label": "mock-large / squad-smoke",
+          "method": "wilson",
+          "metric": "exact_match",
+          "model_digest": "mock-large-v2",
+          "n": 10,
+          "run_id": "10000000-0000-4000-8000-000000000002",
+          "value": 0.8
+        },
+        {
+          "ci_high": 0.8922,
+          "ci_low": 0.3968,
+          "dataset": "squad-smoke",
+          "dataset_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+          "label": "mock-small / squad-smoke",
+          "method": "wilson",
+          "metric": "exact_match",
+          "model_digest": "mock-small-v1",
+          "n": 10,
+          "run_id": "10000000-0000-4000-8000-000000000001",
+          "value": 0.7
+        }
+      ],
+      "value": "qa_short"
+    }
+  ],
+  "schema_version": "0.1",
+  "slices": [
+    {
+      "ci_high": 0.8922,
+      "ci_low": 0.3968,
+      "dataset": "squad-smoke",
+      "label": "mock-small / squad-smoke",
+      "metric": "exact_match",
+      "model_digest": "mock-small-v1",
+      "n": 10,
+      "overall": true,
+      "run_id": "10000000-0000-4000-8000-000000000001",
+      "slice": "__overall__",
+      "value": 0.7
+    },
+    {
+      "ci_high": 0.85,
+      "ci_low": 0.15,
+      "dataset": "squad-smoke",
+      "label": "mock-small / squad-smoke",
+      "metric": "exact_match",
+      "model_digest": "mock-small-v1",
+      "n": 4,
+      "overall": false,
+      "run_id": "10000000-0000-4000-8000-000000000001",
+      "slice": "difficulty=hard",
+      "value": 0.5
+    },
+    {
+      "ci_high": 0.97,
+      "ci_low": 0.436,
+      "dataset": "squad-smoke",
+      "label": "mock-small / squad-smoke",
+      "metric": "exact_match",
+      "model_digest": "mock-small-v1",
+      "n": 6,
+      "overall": false,
+      "run_id": "10000000-0000-4000-8000-000000000001",
+      "slice": "difficulty=easy",
+      "value": 0.8333
+    },
+    {
+      "ci_high": 0.9433,
+      "ci_low": 0.4902,
+      "dataset": "squad-smoke",
+      "label": "mock-large / squad-smoke",
+      "metric": "exact_match",
+      "model_digest": "mock-large-v2",
+      "n": 10,
+      "overall": true,
+      "run_id": "10000000-0000-4000-8000-000000000002",
+      "slice": "__overall__",
+      "value": 0.8
+    },
+    {
+      "ci_high": 0.9544,
+      "ci_low": 0.3006,
+      "dataset": "squad-smoke",
+      "label": "mock-large / squad-smoke",
+      "metric": "exact_match",
+      "model_digest": "mock-large-v2",
+      "n": 4,
+      "overall": false,
+      "run_id": "10000000-0000-4000-8000-000000000002",
+      "slice": "difficulty=hard",
+      "value": 0.75
+    },
+    {
+      "ci_high": 0.97,
+      "ci_low": 0.436,
+      "dataset": "squad-smoke",
+      "label": "mock-large / squad-smoke",
+      "metric": "exact_match",
+      "model_digest": "mock-large-v2",
+      "n": 6,
+      "overall": false,
+      "run_id": "10000000-0000-4000-8000-000000000002",
+      "slice": "difficulty=easy",
+      "value": 0.8333
+    },
+    {
+      "ci_high": 0.8632,
+      "ci_low": 0.3057,
+      "dataset": "news-smoke",
+      "label": "mock-small / news-smoke",
+      "metric": "classification",
+      "model_digest": "mock-small-v1",
+      "n": 8,
+      "overall": true,
+      "run_id": "20000000-0000-4000-8000-000000000001",
+      "slice": "__overall__",
+      "value": 0.625
+    },
+    {
+      "ci_high": 0.85,
+      "ci_low": 0.15,
+      "dataset": "news-smoke",
+      "label": "mock-small / news-smoke",
+      "metric": "classification",
+      "model_digest": "mock-small-v1",
+      "n": 4,
+      "overall": false,
+      "run_id": "20000000-0000-4000-8000-000000000001",
+      "slice": "topic=business",
+      "value": 0.5
+    },
+    {
+      "ci_high": 0.9544,
+      "ci_low": 0.3006,
+      "dataset": "news-smoke",
+      "label": "mock-small / news-smoke",
+      "metric": "classification",
+      "model_digest": "mock-small-v1",
+      "n": 4,
+      "overall": false,
+      "run_id": "20000000-0000-4000-8000-000000000001",
+      "slice": "topic=science",
+      "value": 0.75
+    },
+    {
+      "ci_high": 0.9821,
+      "ci_low": 0.5958,
+      "dataset": "news-smoke",
+      "label": "mock-large / news-smoke",
+      "metric": "classification",
+      "model_digest": "mock-large-v2",
+      "n": 10,
+      "overall": true,
+      "run_id": "20000000-0000-4000-8000-000000000002",
+      "slice": "__overall__",
+      "value": 0.9
+    },
+    {
+      "ci_high": 0.9544,
+      "ci_low": 0.3006,
+      "dataset": "news-smoke",
+      "label": "mock-large / news-smoke",
+      "metric": "classification",
+      "model_digest": "mock-large-v2",
+      "n": 4,
+      "overall": false,
+      "run_id": "20000000-0000-4000-8000-000000000002",
+      "slice": "topic=business",
+      "value": 0.75
+    },
+    {
+      "ci_high": 1.0,
+      "ci_low": 0.6097,
+      "dataset": "news-smoke",
+      "label": "mock-large / news-smoke",
+      "metric": "classification",
+      "model_digest": "mock-large-v2",
+      "n": 6,
+      "overall": false,
+      "run_id": "20000000-0000-4000-8000-000000000002",
+      "slice": "topic=science",
+      "value": 1.0
+    }
+  ],
+  "suite_digest": "f4ccac256cecefbb2923ebb924a0700c19c43584eb447eb82156f1b5728ce4c7"
+}

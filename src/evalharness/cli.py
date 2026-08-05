@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import typer
+import yaml
 from rich.console import Console
 from rich.table import Table
 from sqlalchemy import select
@@ -17,9 +18,17 @@ from evalharness.cli_progress import PipelineProgress
 from evalharness.config import get_settings
 from evalharness.core.enums import FailureOutcome, TaskType
 from evalharness.core.models import Case, Generation
-from evalharness.datasets import load_dataset, validate_dataset
+from evalharness.datasets import (
+    DatasetCaseError,
+    DatasetManifestError,
+    DatasetTier,
+    load_dataset,
+    validate_dataset,
+)
 from evalharness.execution.executor import Executor
 from evalharness.hashing import config_hash, sha256_hex
+from evalharness.judge import JudgeError, attach_calibration, run_judgment, validate_calibration
+from evalharness.judge.models import JudgeMode
 from evalharness.observability import (
     StageTimer,
     exception_summary,
@@ -29,19 +38,35 @@ from evalharness.observability import (
 )
 from evalharness.providers.config import OllamaConfig, OpenAICompatibleConfig
 from evalharness.providers.registry import create_provider, load_provider
-from evalharness.reporting.report import write_report
+from evalharness.rag import RagError, build_rag_evidence
+from evalharness.reporting.report import PRIMARY_METRIC, write_report
 from evalharness.scoring.calibration import calibrate_threshold
 from evalharness.scoring.engine import ScoringEngine
 from evalharness.statistics import apply_multiplicity, compare_binary, required_sample_size
 from evalharness.store.db import init_db, session_scope
 from evalharness.store.models import CaseRow, GenerationRow, ScoreRow
 from evalharness.store.repository import RunRepository
+from evalharness.suite import SuiteValidationError, load_suite, write_suite_artifacts
 
 app = typer.Typer(no_args_is_help=True, help="evalanche — reproducible LLM evaluation harness")
 runs_app = typer.Typer(no_args_is_help=True)
+dataset_app = typer.Typer(no_args_is_help=True)
+suite_app = typer.Typer(no_args_is_help=True)
+judge_app = typer.Typer(no_args_is_help=True)
+rag_app = typer.Typer(no_args_is_help=True)
 app.add_typer(runs_app, name="runs")
+app.add_typer(dataset_app, name="dataset")
+app.add_typer(suite_app, name="suite")
+app.add_typer(judge_app, name="judge")
+app.add_typer(rag_app, name="rag")
 console = Console()
 logger = get_logger(__name__)
+
+
+@app.callback()
+def configure_cli_logging() -> None:
+    """Keep structured logs on stderr so command stdout remains machine-readable."""
+    setup_logging()
 
 
 @app.command("power")
@@ -258,7 +283,11 @@ def dataset_validate(
 ) -> None:
     """Validate a dataset manifest and cases."""
     setup_logging()
-    bundle = load_dataset(dataset_dir)
+    try:
+        bundle = load_dataset(dataset_dir)
+    except (DatasetCaseError, DatasetManifestError, json.JSONDecodeError, yaml.YAMLError) as exc:
+        console.print(f"[red]ERROR[/red] {exc}")
+        raise typer.Exit(1) from exc
     report = validate_dataset(bundle, allow_holdout=final_eval)
     if report.errors:
         for err in report.errors:
@@ -273,6 +302,238 @@ def dataset_validate(
         )
         raise typer.Exit(0)
     raise typer.Exit(1)
+
+
+@dataset_app.command("materialize")
+def dataset_materialize(
+    adapter: str = typer.Option(..., "--adapter", help="Registered offline adapter name"),
+    source: Path = typer.Option(..., "--source", help="Pinned local source snapshot"),
+    output: Path = typer.Option(..., "--out", help="New dataset bundle directory"),
+    seed: int = typer.Option(..., "--seed"),
+    size: int = typer.Option(..., "--size", min=1),
+    tier: DatasetTier = typer.Option(..., "--tier"),
+    check_deterministic: bool = typer.Option(False, "--check-deterministic"),
+) -> None:
+    """Materialize a pinned local snapshot without network access."""
+    from tools.datasets import MaterializationError, materialize_dataset
+
+    try:
+        materialize_dataset(
+            adapter_name=adapter,
+            source=source,
+            output=output,
+            seed=seed,
+            size=size,
+            tier=tier,
+            check_deterministic=check_deterministic,
+        )
+    except MaterializationError as exc:
+        console.print(f"[red]{exc.code}[/red] {exc}")
+        raise typer.Exit(1) from exc
+    except OSError as exc:
+        console.print(f"[red]IO_ERROR[/red] {exc}")
+        raise typer.Exit(2) from exc
+    bundle = load_dataset(output)
+    console.print(
+        json.dumps(
+            {
+                "adapter": adapter,
+                "dataset": bundle.manifest.name,
+                "cases": len(bundle.cases),
+                "content_sha256": bundle.content_sha256,
+                "output": str(output),
+            },
+            sort_keys=True,
+        )
+    )
+
+
+def _emit_json(payload: dict[str, object]) -> None:
+    # Rich wraps at console width, which corrupts JSON piped into other tools.
+    console.print(json.dumps(payload, sort_keys=True), soft_wrap=True)
+
+
+def _emit_suite_json(payload: dict[str, object]) -> None:
+    _emit_json(payload)
+
+
+@suite_app.command("validate")
+def suite_validate(
+    manifest: Path = typer.Argument(..., help="Path to suite.yaml"),
+) -> None:
+    """Validate a suite manifest and every declared artifact."""
+    try:
+        validated = load_suite(manifest)
+    except SuiteValidationError as exc:
+        console.print(f"[red]{exc.code}[/red] {exc}")
+        raise typer.Exit(1) from exc
+    _emit_suite_json(
+        {
+            "schema_version": validated.manifest.schema_version,
+            "name": validated.manifest.name,
+            "members": len(validated.members),
+            "compares": len(validated.compares),
+            "valid": True,
+        }
+    )
+
+
+@suite_app.command("build")
+def suite_build(
+    manifest: Path = typer.Option(..., "--manifest", help="Path to suite.yaml"),
+    output: Path = typer.Option(..., "--output", help="Suite artifact output directory"),
+) -> None:
+    """Build deterministic suite.json and offline suite.html."""
+    try:
+        report = write_suite_artifacts(manifest, output)
+    except SuiteValidationError as exc:
+        console.print(f"[red]{exc.code}[/red] {exc}")
+        raise typer.Exit(1) from exc
+    except OSError as exc:
+        console.print(f"[red]IO_ERROR[/red] {exc}")
+        raise typer.Exit(2) from exc
+    _emit_suite_json(
+        {
+            "suite_digest": report.suite_digest,
+            "members": len(report.members),
+            "output": str(output),
+        }
+    )
+
+
+@judge_app.command("run")
+def judge_run(
+    mode: JudgeMode = typer.Option(..., "--mode"),
+    rubric: Path = typer.Option(..., "--rubric"),
+    candidates: Path | None = typer.Option(None, "--candidates"),
+    pairs: Path | None = typer.Option(None, "--pairs"),
+    provider: str = typer.Option(..., "--provider"),
+    model: str = typer.Option(..., "--model"),
+    judge_family: str = typer.Option(..., "--judge-family"),
+    candidate_family: str = typer.Option(..., "--candidate-family"),
+    responses: Path | None = typer.Option(None, "--responses"),
+    seed: int = typer.Option(..., "--seed"),
+    output: Path = typer.Option(..., "--output"),
+) -> None:
+    """Run pointwise or pairwise judging into judgment.json (always informational)."""
+    setup_logging()
+    try:
+        artifact = run_judgment(
+            mode=mode,
+            rubric_path=rubric,
+            candidates_path=candidates,
+            pairs_path=pairs,
+            provider=provider,
+            model=model,
+            judge_family=judge_family,
+            candidate_family=candidate_family,
+            responses_path=responses,
+            seed=seed,
+            output_path=output,
+        )
+    except JudgeError as exc:
+        console.print(f"[red]{exc.code}[/red] {exc}")
+        raise typer.Exit(1) from exc
+    _emit_json(
+        {
+            "mode": artifact.mode.value,
+            "items": len(artifact.items),
+            "gating_allowed": artifact.gating_allowed,
+            "output": str(output),
+        }
+    )
+
+
+@judge_app.command("validate")
+def judge_validate(
+    judgments: Path = typer.Option(..., "--judgments"),
+    labels_dev: Path | None = typer.Option(None, "--labels-dev"),
+    labels_holdout: Path = typer.Option(..., "--labels-holdout"),
+    rubric: Path = typer.Option(..., "--rubric", help="Rubric that produced the judgment"),
+    output: Path = typer.Option(..., "--output"),
+) -> None:
+    """Compute holdout calibration into calibration.json (source of the gate bit)."""
+    setup_logging()
+    try:
+        artifact = validate_calibration(
+            judgment_path=judgments,
+            labels_dev_path=labels_dev,
+            labels_holdout_path=labels_holdout,
+            rubric_path=rubric,
+            output_path=output,
+        )
+    except JudgeError as exc:
+        console.print(f"[red]{exc.code}[/red] {exc}")
+        raise typer.Exit(1) from exc
+    _emit_json(
+        {
+            "gating_allowed": artifact.gating_allowed,
+            "family_separation_ok": artifact.family_separation_ok,
+            "n_holdout": artifact.holdout.n,
+            "agreement_holdout": artifact.holdout.agreement,
+            "output": str(output),
+        }
+    )
+
+
+@judge_app.command("attach-calibration")
+def judge_attach_calibration(
+    judgment: Path = typer.Option(..., "--judgment"),
+    calibration: Path = typer.Option(..., "--calibration"),
+    output: Path = typer.Option(..., "--output"),
+) -> None:
+    """Copy a passing calibration digest onto a new judgment artifact."""
+    setup_logging()
+    try:
+        artifact = attach_calibration(
+            judgment_path=judgment,
+            calibration_path=calibration,
+            output_path=output,
+        )
+    except JudgeError as exc:
+        console.print(f"[red]{exc.code}[/red] {exc}")
+        raise typer.Exit(1) from exc
+    _emit_json(
+        {
+            "gating_allowed": artifact.gating_allowed,
+            "calibration_digest": artifact.calibration_digest,
+            "output": str(output),
+        }
+    )
+
+
+@rag_app.command("evidence")
+def rag_evidence(
+    report: Path = typer.Option(..., "--report"),
+    evidence: Path = typer.Option(..., "--evidence"),
+    output: Path = typer.Option(..., "--output"),
+    nli_provider: str | None = typer.Option(None, "--nli-provider"),
+    nli_model: str | None = typer.Option(None, "--nli-model"),
+    nli_responses: Path | None = typer.Option(None, "--nli-responses"),
+) -> None:
+    """Build rag_evidence.json from a run report and local evidence JSONL."""
+    setup_logging()
+    try:
+        artifact = build_rag_evidence(
+            report_path=report,
+            evidence_path=evidence,
+            output_path=output,
+            nli_provider=nli_provider,
+            nli_model=nli_model,
+            nli_responses_path=nli_responses,
+        )
+    except RagError as exc:
+        console.print(f"[red]{exc.code}[/red] {exc}")
+        raise typer.Exit(1) from exc
+    _emit_json(
+        {
+            "run_id": artifact.get("run_id"),
+            "faithfulness_status": (artifact.get("faithfulness") or {}).get("status"),
+            "retrieval_status": (artifact.get("retrieval") or {}).get("status"),
+            "gating_allowed": artifact.get("gating_allowed"),
+            "output": str(output),
+        }
+    )
 
 
 @app.command("run")
@@ -489,15 +750,22 @@ async def _run_async(
         )
         console.print(f"[cyan]Created run[/cyan] {run_id}")
 
+    # The headline pass rate must be computed from a metric this run actually scored.
+    metric_names = list(bundle.manifest.task_metrics or [PRIMARY_METRIC])
     try:
         with PipelineProgress(console) as pipeline_progress:
             await executor.execute_run(run_id, concurrency=concurrency, progress=pipeline_progress)
-            await ScoringEngine().rescore_run(run_id, ["exact_match"], progress=pipeline_progress)
+            await ScoringEngine().rescore_run(
+                run_id,
+                metric_names,
+                progress=pipeline_progress,
+            )
             report = await write_report(
                 run_id,
                 output_dir,
                 coverage_floor=coverage_floor,
                 progress=pipeline_progress,
+                primary_metric=metric_names[0],
             )
     except Exception as exc:
         logger.exception("pipeline_failed", **exception_summary(exc))
@@ -510,7 +778,9 @@ async def _run_async(
         run_id=str(run_id),
         publishable=report.publishable,
         coverage=report.coverage,
+        primary_metric=report.primary_metric,
         pass_rate=report.pass_rate,
+        pass_rate_n=report.pass_rate_n,
         duration_ms=pipeline_timer.elapsed_ms,
     )
 
@@ -522,8 +792,23 @@ async def _run_async(
     table.add_row("Model digest", report.model_digest[:16] + "...")
     table.add_row("Coverage", f"{report.coverage:.2%}")
     table.add_row(
-        "Pass rate",
-        f"{report.pass_rate:.2%} [{report.pass_rate_ci[0]:.2%}, {report.pass_rate_ci[1]:.2%}]",
+        (
+            f"Mean ({report.primary_metric}, n={report.pass_rate_n})"
+            if report.headline_kind == "mean"
+            else f"Pass rate ({report.primary_metric}, n={report.pass_rate_n})"
+        ),
+        (
+            "n/a"
+            if report.pass_rate is None
+            else (
+                f"{report.pass_rate:.2%}"
+                if report.pass_rate_ci[0] is None or report.pass_rate_ci[1] is None
+                else (
+                    f"{report.pass_rate:.2%} "
+                    f"[{report.pass_rate_ci[0]:.2%}, {report.pass_rate_ci[1]:.2%}]"
+                )
+            )
+        ),
     )
     table.add_row("Publishable", str(report.publishable))
     console.print(table)

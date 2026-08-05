@@ -1,0 +1,2 @@
+{"schema_version": "0.1", "rubric_name": "helpfulness", "rubric_version": "1.0.0", "case_id": "case-00000", "label_shape": "ordinal_score", "value": 4, "split": "dev", "label_set_id": "helpfulness-dev-v1"}
+{"schema_version": "0.1", "rubric_name": "helpfulness", "rubric_version": "1.0.0", "case_id": "case-00001", "label_shape": "ordinal_score", "value": 4, "split": "dev", "label_set_id": "helpfulness-dev-v1"}

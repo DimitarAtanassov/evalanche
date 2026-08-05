@@ -186,6 +186,7 @@ class JsonValidityMetric(ScalarMetric):
 class JsonFieldF1Metric(ScalarMetric):
     name = "json_field_f1"
     task_types = frozenset({TaskType.EXTRACTION, TaskType.GENERATION})
+    requires = frozenset()
 
     def value(
         self, gen: Generation, case: Case, ctx: ScoringContext

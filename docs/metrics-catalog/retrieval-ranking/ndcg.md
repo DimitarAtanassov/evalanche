@@ -63,7 +63,9 @@ Note `log2(index + 2)` with 0‑based `index` = \(\log_2(\text{rank}+1)\) — st
 - **Aggregate:** inherited **mean + Wilson**, but `config = {"threshold": 0.0, "cutoffs":
   [1,3,5,10,20]}` — with threshold `0.0`, *every* non‑null case counts as a "pass", so the
   Wilson interval here is essentially over coverage, not quality. **Report the mean NDCG (and
-  a [BCa CI](../statistics/bootstrap.md) on it), not the pass rate.**
+  a [BCa CI](../statistics/bootstrap.md) on it), not the pass rate.** The run report
+  (`assemble_run_report`) follows this: when `retrieval_ndcg_10` is the primary, the
+  headline is the overall mean (`headline_kind: "mean"`), not a Bernoulli pass rate.
 - **High vs low:** higher is better; `1.0` = ideal ordering of the retrieved relevant docs.
 
 ## Registered name / version & config
