@@ -1,8 +1,28 @@
 # Database schema
 
-PostgreSQL 16 + `pgvector`. **Alembic is the sole schema owner** — `init_db()` runs `alembic upgrade head`; runtime code never calls `create_all`.
+## Purpose
 
-Raw provider payloads live in **`generations.raw_response` (JSONB)** — not object storage. Revisit triggers are local-only (`DEFERRED.md`).
+This document is the **map** of the PostgreSQL model: the table groups, the constraints
+that enforce our invariants, and the migration that hardened them. It is intentionally
+concise. For the full column‑by‑column reference and a copy‑paste **SQL query library**,
+see [guide.md §5](guide.md#5-database-deep-dive) — that is the one home for schema
+detail and queries.
+
+PostgreSQL 16 + `pgvector`. **Alembic is the sole schema owner** — `init_db()` runs
+`alembic upgrade head`; runtime code never calls `create_all`. Raw provider payloads
+live in **`generations.raw_response` (JSONB)**, not object storage (a deliberate,
+documented deferral in [`DEFERRED.md`](../DEFERRED.md)).
+
+## Table groups
+
+The schema divides cleanly into three groups that mirror the [data plane](dataplane.md):
+
+1. **Definitions** — append‑once, content‑addressed inputs: `datasets`, `cases`,
+   `prompt_templates`, `model_versions`.
+2. **Run + immutable outputs** — the evaluation record: `runs`, `generations`,
+   `scores`, `metric_aggregates`.
+3. **Forward‑compatible + cache** — reserved and operational: `judgments`,
+   `annotations`, `embeddings`, `response_cache`.
 
 ## Entity relationships
 
@@ -16,50 +36,47 @@ erDiagram
   cases ||--o{ generations : for
   generations ||--o{ scores : scored_as
   runs ||--o{ metric_aggregates : rolls_up
+  runs ||--o{ runs : baseline
+  model_versions ||--o{ embeddings : embedded_by
+  generations ||--o{ judgments : judged
+  cases ||--o{ annotations : labeled
 ```
 
-## Tables
-
-### Definitions (mostly immutable after insert)
+## Definitions (mostly immutable after insert)
 
 | Table | Purpose | Key uniqueness |
 |-------|---------|----------------|
-| `datasets` | Named dataset version + content hash + manifest | `(name, version)` — hash mismatch on existing row is a hard error |
-| `cases` | One eval case | `(dataset_id, external_id)` |
-| `prompt_templates` | Template body + hash | `(name, version)` — hash mismatch on existing row is a hard error |
-| `model_versions` | Provider + model + **resolved** version + quant | `UNIQUE (provider, model, resolved_version, COALESCE(quantization, ''))` |
+| `datasets` | Named dataset version + content hash + manifest | `(name, version)` — a hash mismatch on an existing row is a hard error |
+| `cases` | One eval case (inputs, packed reference, qrels, slices) | `(dataset_id, external_id)`; GIN index on `slices` |
+| `prompt_templates` | Template body + hash | `(name, version)` — hash mismatch is a hard error |
+| `model_versions` | Provider + model + **resolved** version + quant + capabilities | `UNIQUE (provider, model, resolved_version, COALESCE(quantization, ''))` |
 
-### Runs
+**Why hash content, not trust version strings?** Humans forget to bump versions.
+`validate_dataset` refuses a run when the recomputed content hash disagrees with the
+manifest — this is content addressing (principle #2) enforced in code.
 
-| Table | Purpose |
-|-------|---------|
-| `runs` | Job metadata: decode params, `config_sha256`, status, tenant, harness/git versions |
+## Runs and immutable outputs
 
-Statuses: `queued` → `running` → `completed` | `failed` | `cancelled`.
+| Table | Purpose | Notes |
+|-------|---------|-------|
+| `runs` | Job metadata: decode params, `config_sha256`, status, tenant, harness/git versions, optional `baseline_run_id` | Statuses: `queued`→`running`→`completed`\|`failed`\|`cancelled` |
+| `generations` | One row per `(run_id, case_id, repeat_idx)` — **never updated** after insert | Holds output, `outcome`, latency, `attempts`, `attempt_log`, `cached`, `raw_response`, `trace_id` |
+| `scores` | Metric results referencing `generation_id` — pass/fail **quality** lives here | Keyed by `(metric_name, metric_version, metric_config_sha256)` |
+| `metric_aggregates` | Per‑run rollups with CI method | Keyed by `(run_id, metric_name, metric_version, slice_key, metric_config_sha256)` |
 
-### Immutable outputs
+The `UNIQUE (run_id, case_id, repeat_idx)` constraint on `generations` *is* the resume
+mechanism: idempotent checkpoint inserts use `ON CONFLICT DO NOTHING`. The `scores`
+uniqueness is the **rescore‑safety** constraint: rescoring with the same metric+config
+is idempotent, while a changed normalizer (new `metric_config_sha256`) writes a *new*
+row beside the old one. History is additive.
 
-| Table | Purpose |
-|-------|---------|
-| `generations` | One row per `(run_id, case_id, repeat_idx)` — **never update** after insert |
-| `scores` | Metric results referencing `generation_id`; pass/fail quality lives here |
-| `metric_aggregates` | Overall (and later slice) rollups with CI method |
+## Forward‑compatible + cache
 
-### Forward-compatible (schema present, unused in current scoring paths)
-
-`judgments`, `annotations`, `embeddings` — reserved for judge, human labels, and embedding metrics.
-
-### Cache
-
-`response_cache` — `cache_key` PK → JSON response payload (`ON CONFLICT DO NOTHING` on put).
-
-## Generation columns of note
-
-- `outcome` — provider/harness failure taxonomy at generation time (not post-score quality)
-- `raw_response` — provider payload JSONB
-- `attempt_log` — retry history
-- `trace_id` — OTel linkage
-- `ttft_ms` / `total_ms` — latency
+- `judgments`, `annotations`, `embeddings` — reserved for LLM‑as‑judge, human labels,
+  and durable embedding storage. Schema present; hot paths not yet wired (see
+  [guide.md §8.4](guide.md#84-known-gaps--deferred)).
+- `response_cache` — `cache_key` PK → JSON response payload (`ON CONFLICT DO NOTHING`
+  on put). See [dataplane.md](dataplane.md#cache-key).
 
 ## Migrations
 
@@ -67,20 +84,31 @@ Statuses: `queued` → `running` → `completed` | `failed` | `cancelled`.
 |----------|--------|
 | `0001_initial` | Full baseline DDL (`IF NOT EXISTS` guards for existing PoC DBs) |
 | `0002_raw_response_jsonb` | `raw_response` JSONB; drop legacy `raw_uri` |
-| `0003_foundation_correctness` | Metric aggregate identity + config hash, btree indexes, NULL-safe model uniqueness |
+| `0003_foundation_correctness` | Metric‑aggregate identity + `metric_config_sha256 NOT NULL`; btree indexes (`ix_generations_run_id`, `ix_scores_generation_id`, `ix_runs_status_started_at`, `ix_generations_run_case_repeat`); NULL‑safe `uq_model_versions_identity` |
+
+The live head is **`0003_foundation_correctness`**. Confirm with `uv run alembic current`.
 
 Bootstrap:
 
 ```bash
 uv run alembic upgrade head
-# or
-uv run python -c "import asyncio; from evalharness.store.db import init_db; asyncio.run(init_db())"
+# equivalent (also called by evalctl run):
+# uv run python -c "import asyncio; from evalharness.store.db import init_db; asyncio.run(init_db())"
 ```
 
-## Indexing and idempotency
+## Indexing and idempotency (why these exist)
 
-- GIN on `cases.slices` (`jsonb_path_ops`) for slice filters
-- Btree on `generations(run_id)` and `scores(generation_id)`
-- `UNIQUE (run_id, case_id, repeat_idx)` — checkpoint inserts use `ON CONFLICT DO NOTHING`
-- `UNIQUE (run_id, metric_name, metric_version, slice_key, metric_config_sha256)` on `metric_aggregates` with upsert on aggregate writes
-- `UNIQUE (generation_id, metric_name, metric_version, metric_config_sha256)` on `scores`
+- **GIN on `cases.slices`** (`jsonb_path_ops`) — fast slice filters
+  (`slices @> '{"difficulty":"hard"}'`).
+- **Btree on `generations(run_id)` / `scores(generation_id)`** — the report's hot joins.
+- **`UNIQUE (run_id, case_id, repeat_idx)`** — checkpoint idempotency / resume.
+- **`uq_metric_aggregates_identity`** — one authoritative rollup per
+  `(run, metric, version, slice, config)`; upserts on aggregate writes.
+- **`UNIQUE (generation_id, metric_name, metric_version, metric_config_sha256)`** —
+  rescore safety; changing a normalizer writes new score rows, not silent overwrites.
+
+## Related
+
+- [guide.md §5](guide.md#5-database-deep-dive) — full column reference + SQL library
+- [dataplane.md](dataplane.md) — which tables are written when
+- [principles.md](principles.md) — immutability, content addressing, versioning

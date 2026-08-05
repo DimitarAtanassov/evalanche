@@ -34,6 +34,12 @@ Truly deferred items (object storage, LLM‑as‑judge, `evald` HTTP API, native
 Anthropic/Google adapters) live in [§8.4](#84-known-gaps--deferred) and
 [`DEFERRED.md`](../DEFERRED.md).
 
+This guide is the deep, example‑driven reference. For the shorter, topic‑focused
+design docs — and a role‑based reading order — see the [documentation index](README.md):
+[architecture](architecture.md), [data plane](dataplane.md), [schema](schema.md),
+[metrics](metrics.md), [providers](providers.md), [reports](reports.md),
+[operations](operations.md), and [principles](principles.md).
+
 ---
 
 ## Table of contents
