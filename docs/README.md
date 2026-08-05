@@ -26,7 +26,7 @@ repeat it.
 | [metrics.md](metrics.md) | The metric catalog as a narrative: what each metric is *for*, when to reach for it, and how lexical / structured / classification / calibration / retrieval / overlap / semantic metrics compose with statistics for honest comparison. |
 | [metrics-catalog/](metrics-catalog/README.md) | The in‑depth per‑family, per‑metric drill‑down: beginner intuition, formulas, edge cases, registered names/versions, and code links. One subdirectory per family. |
 | [providers.md](providers.md) | The `Provider` protocol, the Ollama / OpenAI‑compatible / Mock adapters, the managed runtime (rate limiter + circuit breaker), and how to add a backend. |
-| [reports.md](reports.md) | The JSON / HTML / JUnit artifacts and the leadership / research / engineering views. |
+| [reports.md](reports.md) | The JSON / HTML / JUnit artifacts and the single run dashboard they render. |
 | [operations.md](operations.md) | Local stack, CLI recipes, observability, failure modes, and quality gates. |
 | [principles.md](principles.md) | The non‑negotiables — with a one‑line justification each — that any PR must respect. |
 | [benchmarks.md](benchmarks.md) | Performance gates and how to run the 100k‑case benchmark. |

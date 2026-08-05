@@ -13,13 +13,20 @@ from rich.console import Console
 from rich.table import Table
 from sqlalchemy import select
 
+from evalharness.cli_progress import PipelineProgress
 from evalharness.config import get_settings
 from evalharness.core.enums import FailureOutcome, TaskType
 from evalharness.core.models import Case, Generation
 from evalharness.datasets import load_dataset, validate_dataset
 from evalharness.execution.executor import Executor
 from evalharness.hashing import config_hash, sha256_hex
-from evalharness.observability import setup_logging, setup_otel
+from evalharness.observability import (
+    StageTimer,
+    exception_summary,
+    get_logger,
+    setup_logging,
+    setup_otel,
+)
 from evalharness.providers.config import OllamaConfig, OpenAICompatibleConfig
 from evalharness.providers.registry import create_provider, load_provider
 from evalharness.reporting.report import write_report
@@ -34,6 +41,7 @@ app = typer.Typer(no_args_is_help=True, help="evalanche — reproducible LLM eva
 runs_app = typer.Typer(no_args_is_help=True)
 app.add_typer(runs_app, name="runs")
 console = Console()
+logger = get_logger(__name__)
 
 
 @app.command("power")
@@ -118,11 +126,15 @@ def runs_rescore(
     metrics: str = typer.Option("exact_match", "--metrics"),
 ) -> None:
     """Idempotently rescore stored generations with zero inference."""
-    count = asyncio.run(
-        ScoringEngine().rescore_run(
-            uuid.UUID(run_id), [name.strip() for name in metrics.split(",") if name.strip()]
+    setup_logging()
+    with PipelineProgress(console) as pipeline_progress:
+        count = asyncio.run(
+            ScoringEngine().rescore_run(
+                uuid.UUID(run_id),
+                [name.strip() for name in metrics.split(",") if name.strip()],
+                progress=pipeline_progress,
+            )
         )
-    )
     console.print(json.dumps({"run_id": run_id, "scores_processed": count, "inference_calls": 0}))
 
 
@@ -320,11 +332,24 @@ async def _run_async(
 ) -> None:
     setup_logging()
     setup_otel()
+    pipeline_timer = StageTimer()
     settings = get_settings()
     await init_db()
 
+    logger.info("dataset_validation_started", dataset_path=str(dataset_dir))
     bundle = load_dataset(dataset_dir)
     validation = validate_dataset(bundle, allow_holdout=final_eval)
+    logger.info(
+        "dataset_validated",
+        dataset=bundle.manifest.name,
+        version=bundle.manifest.version,
+        split=bundle.manifest.split,
+        cases=len(bundle.cases),
+        content_sha256=bundle.content_sha256,
+        valid=validation.valid,
+        warnings=len(validation.warnings),
+        errors=len(validation.errors),
+    )
     if not validation.valid:
         for err in validation.errors:
             console.print(f"[red]ERROR[/red] {err}")
@@ -363,9 +388,23 @@ async def _run_async(
         )
     else:
         prov = load_provider(provider)
+    logger.info("provider_resolution_started", provider=provider, model=model)
     model_version = await prov.resolve_version(model)
+    logger.info(
+        "provider_resolved",
+        provider=model_version.provider,
+        model=model_version.model,
+        model_digest=model_version.resolved_version,
+        capabilities=dict(model_version.capabilities or {}),
+    )
     resumed_run_id = uuid.UUID(resume) if resume else None
 
+    logger.info(
+        "pipeline_planning_started",
+        resume=bool(resume),
+        repeats=repeats,
+        concurrency=concurrency,
+    )
     async with session_scope() as session:
         repo = RunRepository(session)
         dataset_id = await repo.upsert_dataset(bundle)
@@ -410,6 +449,13 @@ async def _run_async(
                     param_hint="--resume",
                 )
 
+    logger.info(
+        "pipeline_planning_finished",
+        dataset_id=dataset_id,
+        prompt_template_id=prompt_template_id,
+        model_version_id=model_version_id,
+        resume=bool(resume),
+    )
     executor = Executor(
         provider=prov,
         model=model,
@@ -443,9 +489,30 @@ async def _run_async(
         )
         console.print(f"[cyan]Created run[/cyan] {run_id}")
 
-    await executor.execute_run(run_id, concurrency=concurrency)
-    await ScoringEngine().rescore_run(run_id, ["exact_match"])
-    report = await write_report(run_id, output_dir, coverage_floor=coverage_floor)
+    try:
+        with PipelineProgress(console) as pipeline_progress:
+            await executor.execute_run(run_id, concurrency=concurrency, progress=pipeline_progress)
+            await ScoringEngine().rescore_run(run_id, ["exact_match"], progress=pipeline_progress)
+            report = await write_report(
+                run_id,
+                output_dir,
+                coverage_floor=coverage_floor,
+                progress=pipeline_progress,
+            )
+    except Exception as exc:
+        logger.exception("pipeline_failed", **exception_summary(exc))
+        raise
+    finally:
+        if hasattr(prov, "aclose"):
+            await prov.aclose()
+    logger.info(
+        "pipeline_finished",
+        run_id=str(run_id),
+        publishable=report.publishable,
+        coverage=report.coverage,
+        pass_rate=report.pass_rate,
+        duration_ms=pipeline_timer.elapsed_ms,
+    )
 
     table = Table(title="Run Summary")
     table.add_column("Field")
@@ -460,9 +527,6 @@ async def _run_async(
     )
     table.add_row("Publishable", str(report.publishable))
     console.print(table)
-
-    if hasattr(prov, "aclose"):
-        await prov.aclose()
 
     if not report.publishable:
         raise typer.Exit(2)

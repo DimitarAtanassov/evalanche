@@ -1,4 +1,8 @@
-"""Versioned, read-only multi-audience report generation."""
+"""Versioned, read-only run report generation.
+
+The JSON artifact is the contract; the HTML dashboard is a view over it. Both are
+byte-reproducible for a given run so the committed golden fixtures stay meaningful.
+"""
 
 from __future__ import annotations
 
@@ -7,26 +11,85 @@ import uuid
 import xml.etree.ElementTree as ET
 from collections import Counter
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
 
-import plotly.graph_objects as go
-import plotly.io as pio
+import altair as alt
+import vl_convert
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 from evalharness.core.enums import FailureOutcome
+from evalharness.core.models import Case
+from evalharness.observability import (
+    PipelineStage,
+    ProgressCallback,
+    ProgressEvent,
+    StageTimer,
+    emit_progress,
+    get_logger,
+    log_context,
+)
+from evalharness.scoring.engine import OVERALL_SLICE
 from evalharness.statistics import wilson_interval
 from evalharness.store.db import session_scope
-from evalharness.store.models import DatasetRow, ModelVersionRow
+from evalharness.store.models import DatasetRow, ModelVersionRow, PromptTemplateRow
 from evalharness.store.repository import RunRepository
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "2.1"
+PRIMARY_METRIC = "exact_match"
 HARNESS_OUTCOMES = {FailureOutcome.HARNESS_ERROR.value, FailureOutcome.HARNESS_TIMEOUT.value}
+EXAMPLE_LIMIT = 8
+EXAMPLE_TEXT_LIMIT = 280
+
+METRIC_CHART_DIV_ID = "chart-metric-scores"
+SLICE_CHART_DIV_ID = "chart-slice-pass-rate"
+OUTCOME_CHART_DIV_ID = "chart-outcome-breakdown"
 LATENCY_CHART_DIV_ID = "chart-latency-percentiles"
+
+LATENCY_PERCENTILES = ("p50", "p90", "p95", "p99", "max")
+
+INK = "#111820"
+MUTED = "#5b6675"
+LINE = "#e4e8ee"
+ACCENT = "#2f5bd7"
+BAD = "#b42318"
+WARN = "#b25e09"
+FONT = "system-ui,-apple-system,'Segoe UI',sans-serif"
+
+_EMBED_OPTIONS = {"actions": False, "renderer": "svg"}
+_CHART_THEME: dict[str, Any] = {
+    "font": FONT,
+    "background": "transparent",
+    "view": {"stroke": None},
+    "axis": {
+        "labelColor": MUTED,
+        "titleColor": MUTED,
+        "labelFontSize": 11,
+        "titleFontSize": 12,
+        "titleFontWeight": "normal",
+        "titlePadding": 10,
+        "gridColor": LINE,
+        "domainColor": LINE,
+        "tickColor": LINE,
+    },
+    "legend": {
+        "labelColor": MUTED,
+        "titleColor": MUTED,
+        "labelFontSize": 11,
+        "labelLimit": 260,
+        "orient": "top",
+        "direction": "horizontal",
+        "symbolType": "square",
+    },
+    "bar": {"color": ACCENT},
+}
+
 _templates = Environment(
     loader=PackageLoader("evalharness.reporting", "templates"),
-    autoescape=select_autoescape(["html"]),
+    autoescape=select_autoescape(enabled_extensions=("html", "j2"), default_for_string=True),
 )
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -37,19 +100,33 @@ class RunReport:
     config_sha256: str
     model_digest: str
     dataset_sha256: str
+    model: dict[str, Any]
+    dataset: dict[str, Any]
+    prompt_template: dict[str, Any]
+    decode_params: dict[str, Any]
     coverage: float
     planned_generations: int
     written_generations: int
     coverage_floor: float
     publishable: bool
+    primary_metric: str
     pass_rate: float
+    pass_rate_n: int
     pass_rate_ci: tuple[float, float]
+    confidence_method: str
+    flaky_cases_excluded: bool
     outcome_histogram: dict[str, int]
+    harness_failures: int
     latency: dict[str, float]
     finish_reasons: dict[str, int]
     metric_aggregates: list[dict[str, Any]]
+    case_examples: list[dict[str, Any]]
+    cost_usd_total: float
+    cost_per_correct: float | None
+    retries: int
+    cache_hits: int
+    cache_rate: float
     trace_ids_sample: list[str]
-    views: dict[str, Any]
 
 
 def _percentile(values: list[float], q: float) -> float:
@@ -62,8 +139,168 @@ def _percentile(values: list[float], q: float) -> float:
     return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
 
 
+def _truncate(value: str | None, limit: int = EXAMPLE_TEXT_LIMIT) -> str | None:
+    if value is None:
+        return None
+    cleaned = " ".join(value.split())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[:limit] + "…"
+
+
+def _format_inputs(inputs: dict[str, Any]) -> str:
+    if not inputs:
+        return ""
+    if len(inputs) == 1:
+        only = next(iter(inputs.values()))
+        return _truncate(str(only)) or ""
+    rendered = json.dumps(inputs, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return _truncate(rendered) or ""
+
+
+def _reference_text(case: Case) -> str | None:
+    if case.reference_answer is not None:
+        return _truncate(case.reference_answer)
+    if case.expected_label is not None:
+        return _truncate(case.expected_label)
+    if case.expected_json is not None:
+        return _truncate(json.dumps(case.expected_json, sort_keys=True, ensure_ascii=False))
+    if case.references:
+        return _truncate("; ".join(str(item) for item in case.references))
+    return None
+
+
+def _model_context(model: ModelVersionRow | None) -> dict[str, Any]:
+    if model is None:
+        return {
+            "provider": "",
+            "model": "",
+            "resolved_version": "",
+            "quantization": None,
+            "params_b": None,
+            "context_window": None,
+            "capabilities": {},
+        }
+    return {
+        "provider": model.provider,
+        "model": model.model,
+        "resolved_version": model.resolved_version,
+        "quantization": model.quantization,
+        "params_b": model.params_b,
+        "context_window": model.context_window,
+        "capabilities": dict(model.capabilities or {}),
+    }
+
+
+def _dataset_context(dataset: DatasetRow | None, case_count: int) -> dict[str, Any]:
+    if dataset is None:
+        return {
+            "name": "",
+            "version": "",
+            "split": "",
+            "content_sha256": "",
+            "case_count": case_count,
+            "license": None,
+            "pii_scrubbed": None,
+            "slice_dimensions": [],
+        }
+    manifest = dataset.manifest or {}
+    slice_dimensions = manifest.get("slices") or []
+    if not isinstance(slice_dimensions, list):
+        slice_dimensions = list(slice_dimensions)
+    return {
+        "name": dataset.name,
+        "version": dataset.version,
+        "split": dataset.split,
+        "content_sha256": dataset.content_sha256,
+        "case_count": case_count,
+        "license": manifest.get("license"),
+        "pii_scrubbed": manifest.get("pii_scrubbed"),
+        "slice_dimensions": [str(item) for item in slice_dimensions],
+    }
+
+
+def _prompt_context(template: PromptTemplateRow | None) -> dict[str, Any]:
+    if template is None:
+        return {"name": "", "version": "", "content_sha256": "", "body": ""}
+    return {
+        "name": template.name,
+        "version": template.version,
+        "content_sha256": template.content_sha256,
+        "body": _truncate(template.body, limit=720) or "",
+    }
+
+
+def _stable_decode_params(decode_params: dict[str, Any] | None) -> dict[str, Any]:
+    """Stable key order so JSON artifacts stay byte-reproducible."""
+    if not decode_params:
+        return {}
+    return cast(dict[str, Any], json.loads(json.dumps(decode_params, sort_keys=True)))
+
+
+def _case_examples(
+    *,
+    generations: list[Any],
+    cases: dict[int, Case],
+    scores: list[Any],
+    primary_metric: str,
+    limit: int = EXAMPLE_LIMIT,
+) -> list[dict[str, Any]]:
+    """Bounded examples for the dashboard.
+
+    Failures lead so a reader immediately sees what went wrong. Text is truncated and
+    raw provider payloads are never included — lean reports stay lean.
+    """
+    primary_by_generation = {
+        score.generation_id: score
+        for score in scores
+        if score.metric_name == primary_metric
+    }
+    candidates: list[tuple[int, int, int, dict[str, Any]]] = []
+    for generation in generations:
+        case = cases.get(generation.case_id)
+        if case is None:
+            continue
+        score = primary_by_generation.get(generation.id)
+        passed = None if score is None else score.passed
+        if generation.outcome in HARNESS_OUTCOMES:
+            priority = 0
+        elif passed is False:
+            priority = 1
+        elif passed is True:
+            priority = 3
+        else:
+            priority = 2
+        candidates.append(
+            (
+                priority,
+                generation.case_id,
+                generation.repeat_idx,
+                {
+                    "case_id": case.external_id,
+                    "repeat_idx": generation.repeat_idx,
+                    "task_type": case.task_type.value,
+                    "slices": dict(sorted((case.slices or {}).items())),
+                    "input": _format_inputs(dict(case.inputs or {})),
+                    "reference": _reference_text(case),
+                    "output": _truncate(generation.output),
+                    "outcome": generation.outcome,
+                    "metric": primary_metric if score is not None else None,
+                    "metric_value": score.value if score is not None else None,
+                    "passed": passed,
+                    "latency_ms": generation.total_ms,
+                    "trace_id": generation.trace_id,
+                },
+            )
+        )
+    candidates.sort(key=lambda item: (item[0], item[1], item[2]))
+    return [item[3] for item in candidates[:limit]]
+
+
 async def build_report(run_id: uuid.UUID, coverage_floor: float = 0.98) -> RunReport:
     """Read stored scores/aggregates; reporting never mutates evaluation state."""
+    timer = StageTimer()
+    logger.info("report_build_started", run_id=str(run_id), coverage_floor=coverage_floor)
     async with session_scope() as session:
         repo = RunRepository(session)
         run = await repo.get_run(run_id)
@@ -71,19 +308,26 @@ async def build_report(run_id: uuid.UUID, coverage_floor: float = 0.98) -> RunRe
             raise ValueError(f"Run not found: {run_id}")
         dataset = await session.get(DatasetRow, run.dataset_id)
         model = await session.get(ModelVersionRow, run.model_version_id)
+        template = await session.get(PromptTemplateRow, run.prompt_template_id)
+        cases = {case_id: case for case_id, case in await repo.get_cases_for_dataset(run.dataset_id)}
         generations = await repo.get_generations_for_run(run_id)
         scores = await repo.get_scores_for_run(run_id)
         aggregates = await repo.get_metric_aggregates(run_id)
         planned = await repo.get_planned_generation_count(run_id)
+        decode_params = _stable_decode_params(dict(run.decode_params or {}))
+        run_status = run.status
+        config_sha256 = run.config_sha256
 
     harness_failures = sum(row.outcome in HARNESS_OUTCOMES for row in generations)
     covered = max(0, len(generations) - harness_failures)
     coverage = covered / planned if planned else 0.0
-    exact = [
-        score for score in scores if score.metric_name == "exact_match" and score.passed is not None
+    primary = [
+        score
+        for score in scores
+        if score.metric_name == PRIMARY_METRIC and score.passed is not None
     ]
-    passed = sum(bool(score.passed) for score in exact)
-    pass_rate = passed / len(exact) if exact else 0.0
+    passed = sum(bool(score.passed) for score in primary)
+    pass_rate = passed / len(primary) if primary else 0.0
     latencies = [float(row.total_ms) for row in generations if row.total_ms is not None]
     latency = {
         key: round(value, 2)
@@ -100,23 +344,38 @@ async def build_report(run_id: uuid.UUID, coverage_floor: float = 0.98) -> RunRe
     retries = sum(max(0, row.attempts - 1) for row in generations)
     cached = sum(row.cached for row in generations)
     written = len(generations)
-    return RunReport(
+    case_examples = _case_examples(
+        generations=generations,
+        cases=cases,
+        scores=scores,
+        primary_metric=PRIMARY_METRIC,
+    )
+    report = RunReport(
         schema_version=SCHEMA_VERSION,
         run_id=str(run_id),
-        run_status=run.status,
-        config_sha256=run.config_sha256,
+        run_status=run_status,
+        config_sha256=config_sha256,
         model_digest=model.resolved_version if model else "",
         dataset_sha256=dataset.content_sha256 if dataset else "",
+        model=_model_context(model),
+        dataset=_dataset_context(dataset, case_count=len(cases)),
+        prompt_template=_prompt_context(template),
+        decode_params=decode_params,
         coverage=coverage,
         planned_generations=planned,
         written_generations=written,
         coverage_floor=coverage_floor,
         publishable=(
-            run.status == "completed" and written == planned and coverage >= coverage_floor
+            run_status == "completed" and written == planned and coverage >= coverage_floor
         ),
+        primary_metric=PRIMARY_METRIC,
         pass_rate=pass_rate,
-        pass_rate_ci=wilson_interval(passed, len(exact)),
+        pass_rate_n=len(primary),
+        pass_rate_ci=wilson_interval(passed, len(primary)),
+        confidence_method="Wilson 95%",
+        flaky_cases_excluded=True,
         outcome_histogram=dict(sorted(Counter(row.outcome for row in generations).items())),
+        harness_failures=harness_failures,
         latency=latency,
         finish_reasons=dict(
             sorted(Counter(row.finish_reason or "unknown" for row in generations).items())
@@ -135,20 +394,27 @@ async def build_report(run_id: uuid.UUID, coverage_floor: float = 0.98) -> RunRe
             }
             for row in aggregates
         ],
-        trace_ids_sample=[row.trace_id for row in generations if row.trace_id][:10],
-        views={
-            "leadership": {
-                "cost_per_correct": total_cost / passed if passed else None,
-                "coverage": coverage,
-            },
-            "research": {"confidence_method": "Wilson 95%", "flaky_cases_excluded": True},
-            "engineering": {
-                "retries": retries,
-                "cache_hits": cached,
-                "cache_rate": cached / len(generations) if generations else 0.0,
-            },
-        },
+        case_examples=case_examples,
+        cost_usd_total=total_cost,
+        cost_per_correct=total_cost / passed if passed else None,
+        retries=retries,
+        cache_hits=cached,
+        cache_rate=cached / len(generations) if generations else 0.0,
+        trace_ids_sample=list(dict.fromkeys(row.trace_id for row in generations if row.trace_id))[
+            :10
+        ],
     )
+    logger.info(
+        "report_build_finished",
+        run_id=str(run_id),
+        publishable=report.publishable,
+        coverage=report.coverage,
+        pass_rate=report.pass_rate,
+        metric_aggregates=len(report.metric_aggregates),
+        case_examples=len(report.case_examples),
+        duration_ms=timer.elapsed_ms,
+    )
+    return report
 
 
 def report_to_json(report: RunReport) -> dict[str, Any]:
@@ -161,35 +427,309 @@ def report_to_json(report: RunReport) -> dict[str, Any]:
     return payload
 
 
-def _render_chart(figure: go.Figure, div_id: str, *, inline_plotlyjs: bool) -> str:
-    """Render a figure to a div.
+def overall_aggregates(report: RunReport) -> list[dict[str, Any]]:
+    return [row for row in report.metric_aggregates if row["slice"] == OVERALL_SLICE]
 
-    ``div_id`` must be supplied by the caller: plotly generates a random UUID when it is
-    omitted, which makes the HTML report non-reproducible.
+
+def slice_aggregates(report: RunReport) -> list[dict[str, Any]]:
+    """Primary-metric rows per slice, worst first — the weakest slice leads."""
+    rows = [
+        row
+        for row in report.metric_aggregates
+        if row["slice"] != OVERALL_SLICE and row["metric"] == report.primary_metric
+    ]
+    return sorted(rows, key=lambda row: (row["value"], row["slice"]))
+
+
+@lru_cache(maxsize=1)
+def _vega_runtime() -> str:
+    """Vega + Vega-Lite + Vega-Embed with no external references.
+
+    Emitted once per document so a report with four charts still carries one copy.
     """
-    return cast(
-        str,
-        pio.to_html(
-            figure,
-            include_plotlyjs="inline" if inline_plotlyjs else False,
-            full_html=False,
-            div_id=div_id,
-        ),
+    # The stub marks ``snippet`` required; omitting it selects vl-convert's default
+    # snippet, which is what binds vegaEmbed/vegaLite/vega onto window.
+    return vl_convert.javascript_bundle()  # type: ignore[call-arg]
+
+
+def _data(rows: list[dict[str, Any]]) -> alt.Data:
+    """Inline chart data. Altair ships untyped constructors, so the boundary is here."""
+    return alt.Data(values=rows)  # type: ignore[no-untyped-call]
+
+
+def _labels(rows: list[dict[str, Any]], field: str) -> list[str]:
+    """Category order for an axis, as the string sequence altair's ``sort`` expects."""
+    return [str(row[field]) for row in rows]
+
+
+def _render_chart(chart: alt.Chart | None, div_id: str) -> str:
+    """Serialize one chart to a div plus its embed call.
+
+    The div id is supplied by the caller rather than left to Altair, which otherwise
+    emits a random ``altair-viz-<uuid>`` and makes the report non-reproducible.
+    """
+    if chart is None:
+        return ""
+    spec = json.dumps(chart.configure(**_CHART_THEME).to_dict(), sort_keys=True)
+    options = json.dumps(_EMBED_OPTIONS, sort_keys=True)
+    return (
+        f'<div id="{div_id}" class="chart"></div>\n'
+        f'<script>vegaEmbed("#{div_id}", {spec}, {options});</script>'
     )
 
 
-def _latency_figure(report: RunReport) -> go.Figure:
-    figure = go.Figure(
-        data=[go.Bar(x=list(report.latency), y=list(report.latency.values()), name="Latency")]
+def _metric_figure(report: RunReport) -> alt.Chart | None:
+    rows: list[dict[str, Any]] = [
+        {
+            "metric": row["metric"],
+            "value": row["value"] * 100,
+            "low": (row["ci_low"] if row["ci_low"] is not None else row["value"]) * 100,
+            "high": (row["ci_high"] if row["ci_high"] is not None else row["value"]) * 100,
+            "n": row["n"],
+        }
+        for row in overall_aggregates(report)
+    ]
+    if not rows:
+        return None
+    axis = alt.Y("metric:N", sort=_labels(rows, "metric"), title=None)
+    bars = (
+        alt.Chart(_data(rows))
+        .mark_bar(height=16)
+        .encode(
+            x=alt.X(
+                "value:Q",
+                title="Score (%) with 95% CI",
+                scale=alt.Scale(domain=[0, 100]),
+                axis=alt.Axis(tickCount=5, labelExpr="datum.value + '%'"),
+            ),
+            y=axis,
+            tooltip=[
+                alt.Tooltip("metric:N", title="Metric"),
+                alt.Tooltip("value:Q", title="Score (%)", format=".2f"),
+                alt.Tooltip("low:Q", title="CI low (%)", format=".2f"),
+                alt.Tooltip("high:Q", title="CI high (%)", format=".2f"),
+                alt.Tooltip("n:Q", title="n"),
+            ],
+        )
     )
-    figure.update_layout(title="Latency percentiles", xaxis_title="Statistic", yaxis_title="ms")
-    return figure
+    whiskers = (
+        alt.Chart(_data(rows))
+        .mark_rule(color=INK, strokeWidth=1.2)
+        .encode(x=alt.X("low:Q", title=""), x2="high:Q", y=axis)
+    )
+    chart = (bars + whiskers).properties(width="container", height=42 * len(rows) + 30)
+    return cast(alt.Chart, chart)
+
+
+def _slice_figure(report: RunReport) -> alt.Chart | None:
+    rows: list[dict[str, Any]] = [
+        {
+            "slice": row["slice"],
+            "value": row["value"] * 100,
+            "low": (row["ci_low"] if row["ci_low"] is not None else row["value"]) * 100,
+            "high": (row["ci_high"] if row["ci_high"] is not None else row["value"]) * 100,
+            "n": row["n"],
+            "band": _band(row["value"] * 100),
+        }
+        for row in slice_aggregates(report)
+    ]
+    if not rows:
+        return None
+    observed = {str(row["band"]) for row in rows}
+    present = [band for band in _BANDS if band in observed]
+    axis = alt.X(
+        "slice:N",
+        sort=_labels(rows, "slice"),
+        title="Slice",
+        axis=alt.Axis(labelAngle=0),
+    )
+    bars = (
+        alt.Chart(_data(rows))
+        .mark_bar(size=40)
+        .encode(
+            x=axis,
+            y=alt.Y(
+                "value:Q",
+                title=f"{report.primary_metric} pass rate (%)",
+                scale=alt.Scale(domain=[0, 100]),
+                axis=alt.Axis(labelExpr="datum.value + '%'"),
+            ),
+            color=alt.Color(
+                "band:N",
+                title=None,
+                sort=present,
+                # Only bands that occur, so the legend never advertises an empty category.
+                scale=alt.Scale(domain=present, range=[_BAND_COLORS[band] for band in present]),
+            ),
+            tooltip=[
+                alt.Tooltip("slice:N", title="Slice"),
+                alt.Tooltip("value:Q", title="Pass rate (%)", format=".2f"),
+                alt.Tooltip("low:Q", title="CI low (%)", format=".2f"),
+                alt.Tooltip("high:Q", title="CI high (%)", format=".2f"),
+                alt.Tooltip("n:Q", title="n"),
+            ],
+        )
+    )
+    whiskers = (
+        alt.Chart(_data(rows))
+        .mark_rule(color=INK, strokeWidth=1.2)
+        .encode(x=axis, y=alt.Y("low:Q", title=""), y2="high:Q")
+    )
+    overall = (
+        alt.Chart(_data([{"overall": report.pass_rate * 100}]))
+        .mark_rule(color=MUTED, strokeDash=[3, 3])
+        .encode(y=alt.Y("overall:Q", title=""))
+    )
+    chart = (bars + whiskers + overall).properties(width="container", height=280)
+    return cast(alt.Chart, chart)
+
+
+_BANDS = ["below 75%", "75–85%", "above 85%"]
+_BAND_COLORS = dict(zip(_BANDS, [BAD, WARN, ACCENT], strict=True))
+
+
+def _band(value: float) -> str:
+    if value < 75:
+        return _BANDS[0]
+    if value < 85:
+        return _BANDS[1]
+    return _BANDS[2]
+
+
+def _outcome_figure(report: RunReport) -> alt.Chart | None:
+    rows: list[dict[str, Any]] = [
+        {
+            "outcome": outcome,
+            "count": count,
+            "category": (
+                "Harness failure (excluded)"
+                if outcome in HARNESS_OUTCOMES
+                else "Model outcome (in denominator)"
+            ),
+        }
+        for outcome, count in report.outcome_histogram.items()
+    ]
+    if not rows:
+        return None
+    observed = {str(row["category"]) for row in rows}
+    categories = [
+        category
+        for category in ("Model outcome (in denominator)", "Harness failure (excluded)")
+        if category in observed
+    ]
+    colors = {
+        "Model outcome (in denominator)": ACCENT,
+        "Harness failure (excluded)": MUTED,
+    }
+    chart = (
+        alt.Chart(_data(rows))
+        .mark_bar(size=48)
+        .encode(
+            x=alt.X(
+                "outcome:N",
+                sort=_labels(rows, "outcome"),
+                title="Provider outcome",
+                axis=alt.Axis(labelAngle=0),
+            ),
+            y=alt.Y(
+                "count:Q",
+                title="Generations (count)",
+                axis=alt.Axis(tickMinStep=1, format="d"),
+            ),
+            color=alt.Color(
+                "category:N",
+                title=None,
+                sort=categories,
+                # Only categories that occur, so the legend never advertises an empty one.
+                scale=alt.Scale(
+                    domain=categories, range=[colors[category] for category in categories]
+                ),
+            ),
+            tooltip=[
+                alt.Tooltip("outcome:N", title="Outcome"),
+                alt.Tooltip("count:Q", title="Generations"),
+                alt.Tooltip("category:N", title="Counted as"),
+            ],
+        )
+        .properties(width="container", height=270)
+    )
+    return cast(alt.Chart, chart)
+
+
+def _latency_figure(report: RunReport) -> alt.Chart | None:
+    rows: list[dict[str, Any]] = [
+        {"stat": key, "ms": report.latency[key]}
+        for key in LATENCY_PERCENTILES
+        if key in report.latency
+    ]
+    if not rows or all(row["ms"] == 0 for row in rows):
+        return None
+    axis = alt.X(
+        "stat:N",
+        sort=_labels(rows, "stat"),
+        title="Percentile",
+        axis=alt.Axis(labelAngle=0),
+    )
+    bars = (
+        alt.Chart(_data(rows))
+        .mark_bar(size=34)
+        .encode(
+            x=axis,
+            y=alt.Y(
+                "ms:Q",
+                title="End-to-end latency (ms)",
+                scale=alt.Scale(domain=[0, max(row["ms"] for row in rows) * 1.18]),
+            ),
+            tooltip=[
+                alt.Tooltip("stat:N", title="Statistic"),
+                alt.Tooltip("ms:Q", title="Latency (ms)", format=",.0f"),
+            ],
+        )
+    )
+    labels = (
+        alt.Chart(_data(rows))
+        .mark_text(dy=-8, fontSize=11, color=MUTED)
+        .encode(x=axis, y="ms:Q", text=alt.Text("ms:Q", format=",.0f"))
+    )
+    chart = (bars + labels).properties(width="container", height=250)
+    return cast(alt.Chart, chart)
+
+
+def _gates(report: RunReport) -> list[dict[str, Any]]:
+    """The publishability gate, itemized so the verdict explains itself."""
+    return [
+        {
+            "name": "Run status is completed",
+            "ok": report.run_status == "completed",
+            "value": report.run_status,
+        },
+        {
+            "name": "All planned generations written",
+            "ok": report.written_generations == report.planned_generations,
+            "value": f"{report.written_generations:,} / {report.planned_generations:,}",
+        },
+        {
+            "name": f"Coverage \u2265 floor ({report.coverage_floor * 100:.0f}%)",
+            "ok": report.coverage >= report.coverage_floor,
+            "value": f"{report.coverage * 100:.2f}%",
+        },
+    ]
 
 
 def report_to_html(report: RunReport) -> str:
-    chart = _render_chart(_latency_figure(report), LATENCY_CHART_DIV_ID, inline_plotlyjs=True)
+    charts = {
+        "metric": _render_chart(_metric_figure(report), METRIC_CHART_DIV_ID),
+        "slice": _render_chart(_slice_figure(report), SLICE_CHART_DIV_ID),
+        "outcome": _render_chart(_outcome_figure(report), OUTCOME_CHART_DIV_ID),
+        "latency": _render_chart(_latency_figure(report), LATENCY_CHART_DIV_ID),
+    }
     rendered = _templates.get_template("report_v1.html.j2").render(
-        report=report_to_json(report), plot=chart
+        report=report_to_json(report),
+        charts=charts,
+        runtime=_vega_runtime(),
+        gates=_gates(report),
+        overall_aggregates=overall_aggregates(report),
+        slice_aggregates=slice_aggregates(report),
     )
     return "\n".join(line.rstrip() for line in rendered.splitlines()) + "\n"
 
@@ -211,14 +751,47 @@ def report_to_junit(report: RunReport) -> str:
 
 
 async def write_report(
-    run_id: uuid.UUID, output_dir: Path, coverage_floor: float = 0.98
+    run_id: uuid.UUID,
+    output_dir: Path,
+    coverage_floor: float = 0.98,
+    progress: ProgressCallback | None = None,
 ) -> RunReport:
-    report = await build_report(run_id, coverage_floor)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    stem = output_dir / str(run_id)
-    stem.with_suffix(".json").write_text(
-        json.dumps(report_to_json(report), indent=2), encoding="utf-8"
+    timer = StageTimer()
+    emit_progress(
+        progress,
+        ProgressEvent(PipelineStage.REPORTING, 0, 3, "Building report artifacts"),
     )
-    stem.with_suffix(".html").write_text(report_to_html(report), encoding="utf-8")
-    stem.with_suffix(".xml").write_text(report_to_junit(report), encoding="utf-8")
-    return report
+    with log_context(run_id=str(run_id)):
+        report = await build_report(run_id, coverage_floor)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stem = output_dir / str(run_id)
+        artifacts = (
+            ("json", stem.with_suffix(".json"), json.dumps(report_to_json(report), indent=2)),
+            ("html", stem.with_suffix(".html"), report_to_html(report)),
+            ("junit", stem.with_suffix(".xml"), report_to_junit(report)),
+        )
+        for index, (format_name, path, content) in enumerate(artifacts, start=1):
+            path.write_text(content, encoding="utf-8")
+            logger.info(
+                "report_artifact_written",
+                format=format_name,
+                path=str(path),
+                bytes=len(content.encode("utf-8")),
+            )
+            emit_progress(
+                progress,
+                ProgressEvent(
+                    PipelineStage.REPORTING,
+                    index,
+                    len(artifacts),
+                    f"Wrote {format_name}",
+                    {"path": str(path)},
+                ),
+            )
+        logger.info(
+            "reporting_finished",
+            artifacts=len(artifacts),
+            output_dir=str(output_dir),
+            duration_ms=timer.elapsed_ms,
+        )
+        return report

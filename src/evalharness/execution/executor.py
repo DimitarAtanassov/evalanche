@@ -6,6 +6,7 @@ import asyncio
 import random
 import signal
 import uuid
+from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -24,7 +25,18 @@ from evalharness.core.models import (
 )
 from evalharness.core.protocols import Provider
 from evalharness.hashing import config_hash, sha256_canonical
-from evalharness.observability import get_logger, get_tracer
+from evalharness.observability import (
+    PipelineStage,
+    ProgressCallback,
+    ProgressEvent,
+    StageTimer,
+    emit_progress,
+    exception_summary,
+    get_logger,
+    get_tracer,
+    log_context,
+    payload_summary,
+)
 from evalharness.store.db import session_scope
 from evalharness.store.repository import RunRepository
 
@@ -86,6 +98,17 @@ class RunConfig:
     drain_timeout_s: float
     max_retries: int
     coverage_floor: float
+
+
+@dataclass(frozen=True)
+class ExecutionResult:
+    case_id: int
+    external_id: str
+    repeat_idx: int
+    outcome: FailureOutcome
+    attempts: int
+    cached: bool
+    duration_ms: float | None
 
 
 class GracefulShutdown:
@@ -219,6 +242,16 @@ class Executor:
                 run_id=run_id,
             )
             await repo.update_run_status(rid, "running")
+            logger.info(
+                "run_created",
+                run_id=str(rid),
+                tenant_id=tenant_id,
+                dataset_id=bundle_dataset_id,
+                model=self.model,
+                model_digest=self.model_version.resolved_version,
+                repeats=repeats,
+                config_sha256=cfg_sha,
+            )
             return rid
 
     async def plan(self, run_id: uuid.UUID) -> tuple[RunConfig, list[RunPlanItem]]:
@@ -284,39 +317,73 @@ class Executor:
                     "Resume configuration mismatch for: " + ", ".join(sorted(mismatches))
                 )
 
-    async def execute_run(self, run_id: uuid.UUID, concurrency: int | None = None) -> None:
+    async def execute_run(
+        self,
+        run_id: uuid.UUID,
+        concurrency: int | None = None,
+        progress: ProgressCallback | None = None,
+    ) -> None:
+        """Execute a run under context that is guaranteed not to leak to its caller."""
+        with log_context(
+            run_id=str(run_id),
+            provider=self.model_version.provider,
+            model=self.model,
+        ):
+            await self._execute_run_with_context(run_id, concurrency, progress)
+
+    async def _execute_run_with_context(
+        self,
+        run_id: uuid.UUID,
+        concurrency: int | None,
+        progress: ProgressCallback | None,
+    ) -> None:
         self.shutdown.install()
         config, items = await self.plan(run_id)
         worker_count = max(1, concurrency or config.concurrency)
-        pipeline = asyncio.create_task(
-            self._run_worker_pool(run_id, config, items, worker_count),
-            name=f"run-{run_id}-pipeline",
+        timer = StageTimer()
+        logger.info(
+            "generation_started",
+            planned=len(items),
+            concurrency=worker_count,
         )
-        shutdown_wait = asyncio.create_task(self.shutdown.event.wait(), name="shutdown-wait")
-        worker_failures = False
-        try:
-            done, _ = await asyncio.wait(
-                {pipeline, shutdown_wait},
-                timeout=config.run_timeout_s,
-                return_when=asyncio.FIRST_COMPLETED,
+        emit_progress(
+            progress,
+            ProgressEvent(PipelineStage.GENERATING, 0, len(items), "Generating responses"),
+        )
+        with self.tracer.start_as_current_span("run.generate") as run_span:
+            run_span.set_attribute("eval.run_id", str(run_id))
+            run_span.set_attribute("eval.planned_generations", len(items))
+            pipeline = asyncio.create_task(
+                self._run_worker_pool(run_id, config, items, worker_count, progress),
+                name=f"run-{run_id}-pipeline",
             )
-            if pipeline in done:
-                results = await pipeline
-                worker_failures = any(isinstance(result, BaseException) for result in results)
-            elif shutdown_wait in done:
-                try:
-                    results = await asyncio.wait_for(pipeline, timeout=config.drain_timeout_s)
+            shutdown_wait = asyncio.create_task(self.shutdown.event.wait(), name="shutdown-wait")
+            worker_failures = False
+            try:
+                done, _ = await asyncio.wait(
+                    {pipeline, shutdown_wait},
+                    timeout=config.run_timeout_s,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if pipeline in done:
+                    results = await pipeline
                     worker_failures = any(isinstance(result, BaseException) for result in results)
-                except TimeoutError:
+                elif shutdown_wait in done:
+                    try:
+                        results = await asyncio.wait_for(pipeline, timeout=config.drain_timeout_s)
+                        worker_failures = any(
+                            isinstance(result, BaseException) for result in results
+                        )
+                    except TimeoutError:
+                        pipeline.cancel()
+                        await asyncio.gather(pipeline, return_exceptions=True)
+                else:
+                    self.shutdown.request("run_deadline")
                     pipeline.cancel()
                     await asyncio.gather(pipeline, return_exceptions=True)
-            else:
-                self.shutdown.request("run_deadline")
-                pipeline.cancel()
-                await asyncio.gather(pipeline, return_exceptions=True)
-        finally:
-            shutdown_wait.cancel()
-            await asyncio.gather(shutdown_wait, return_exceptions=True)
+            finally:
+                shutdown_wait.cancel()
+                await asyncio.gather(shutdown_wait, return_exceptions=True)
 
         async with session_scope() as session:
             repo = RunRepository(session)
@@ -328,6 +395,12 @@ class Executor:
             else:
                 status = "failed"
             await repo.update_run_status(run_id, status)
+        logger.info(
+            "generation_finished",
+            status=status,
+            remaining=remaining,
+            duration_ms=timer.elapsed_ms,
+        )
 
     async def _run_worker_pool(
         self,
@@ -335,8 +408,14 @@ class Executor:
         config: RunConfig,
         items: list[RunPlanItem],
         worker_count: int,
+        progress: ProgressCallback | None,
     ) -> list[Any]:
         queue: asyncio.Queue[RunPlanItem | None] = asyncio.Queue(maxsize=worker_count * 2)
+        total = len(items)
+        completed = 0
+        outcomes: Counter[str] = Counter()
+        retries = 0
+        cache_hits = 0
 
         async def produce() -> None:
             for item in items:
@@ -347,12 +426,42 @@ class Executor:
                 await queue.put(None)
 
         async def worker() -> None:
+            nonlocal completed, retries, cache_hits
             while True:
                 item = await queue.get()
                 try:
                     if item is None:
                         return
-                    await self._run_one(run_id, config, item)
+                    result = await self._run_one(run_id, config, item)
+                    completed += 1
+                    outcomes[result.outcome.value] += 1
+                    retries += max(0, result.attempts - 1)
+                    cache_hits += int(result.cached)
+                    if completed == total or completed % self.settings.log_progress_every == 0:
+                        logger.info(
+                            "generation_progress",
+                            completed=completed,
+                            total=total,
+                            valid_outputs=outcomes[FailureOutcome.PASSED.value],
+                            other_outcomes=completed - outcomes[FailureOutcome.PASSED.value],
+                            retries=retries,
+                            cache_hits=cache_hits,
+                        )
+                    emit_progress(
+                        progress,
+                        ProgressEvent(
+                            PipelineStage.GENERATING,
+                            completed,
+                            total,
+                            result.external_id,
+                            {
+                                "valid_outputs": outcomes[FailureOutcome.PASSED.value],
+                                "other_outcomes": completed - outcomes[FailureOutcome.PASSED.value],
+                                "retries": retries,
+                                "cache_hits": cache_hits,
+                            },
+                        ),
+                    )
                 except asyncio.CancelledError:
                     raise
                 except Exception:
@@ -377,38 +486,60 @@ class Executor:
         config: RunConfig,
         item: RunPlanItem,
         sem: asyncio.Semaphore | None = None,
-    ) -> None:
+    ) -> ExecutionResult:
         if self.shutdown.requested:
-            return
+            return ExecutionResult(
+                item.case_db_id,
+                item.case.external_id,
+                item.repeat_idx,
+                FailureOutcome.HARNESS_ERROR,
+                0,
+                False,
+                None,
+            )
         if sem is not None:
             await sem.acquire()
+        timer = StageTimer()
         try:
-            with self.tracer.start_as_current_span("case") as span:
-                span.set_attribute("gen_ai.request.model", self.model)
-                span.set_attribute("case.external_id", item.case.external_id)
-                trace_id = format(span.get_span_context().trace_id, "032x")
-                try:
-                    await asyncio.wait_for(
-                        self._execute_case(run_id, config, item, trace_id),
-                        timeout=config.case_timeout_s,
-                    )
-                except TimeoutError:
-                    await self._save_terminal_failure(
-                        run_id,
-                        item,
-                        FailureOutcome.HARNESS_TIMEOUT,
-                        trace_id,
-                        "case_timeout",
-                    )
-                except Exception as exc:
-                    logger.exception("case_execution_failed", case_id=item.case_db_id)
-                    await self._save_terminal_failure(
-                        run_id,
-                        item,
-                        FailureOutcome.HARNESS_ERROR,
-                        trace_id,
-                        type(exc).__name__,
-                    )
+            with log_context(
+                case_id=item.case_db_id,
+                case_external_id=item.case.external_id,
+                repeat_idx=item.repeat_idx,
+            ):
+                logger.debug("case_started")
+                with self.tracer.start_as_current_span("case") as span:
+                    span.set_attribute("gen_ai.request.model", self.model)
+                    span.set_attribute("case.external_id", item.case.external_id)
+                    trace_id = format(span.get_span_context().trace_id, "032x")
+                    try:
+                        result = await asyncio.wait_for(
+                            self._execute_case(run_id, config, item, trace_id),
+                            timeout=config.case_timeout_s,
+                        )
+                        return result
+                    except TimeoutError:
+                        result = await self._save_terminal_failure(
+                            run_id,
+                            item,
+                            FailureOutcome.HARNESS_TIMEOUT,
+                            trace_id,
+                            "case_timeout",
+                        )
+                        return result
+                    except Exception as exc:
+                        logger.exception(
+                            "case_execution_failed",
+                            duration_ms=timer.elapsed_ms,
+                            **exception_summary(exc),
+                        )
+                        result = await self._save_terminal_failure(
+                            run_id,
+                            item,
+                            FailureOutcome.HARNESS_ERROR,
+                            trace_id,
+                            type(exc).__name__,
+                        )
+                        return result
         finally:
             if sem is not None:
                 sem.release()
@@ -420,7 +551,7 @@ class Executor:
         outcome: FailureOutcome,
         trace_id: str,
         reason: str,
-    ) -> None:
+    ) -> ExecutionResult:
         async with session_scope() as session:
             await RunRepository(session).save_generation(
                 run_id=run_id,
@@ -442,6 +573,25 @@ class Executor:
                 raw_response=None,
                 trace_id=trace_id,
             )
+        logger.warning(
+            "case_finished",
+            outcome=outcome.value,
+            attempts=1,
+            cached=False,
+            reason=reason,
+            prompt=payload_summary(render_prompt(self.template_body, item.case)),
+            output=payload_summary(None),
+            trace_id=trace_id,
+        )
+        return ExecutionResult(
+            item.case_db_id,
+            item.case.external_id,
+            item.repeat_idx,
+            outcome,
+            1,
+            False,
+            None,
+        )
 
     async def _execute_case(
         self,
@@ -449,8 +599,10 @@ class Executor:
         config: RunConfig,
         item: RunPlanItem,
         trace_id: str,
-    ) -> None:
+    ) -> ExecutionResult:
         rendered = render_prompt(self.template_body, item.case)
+        case_timer = StageTimer()
+        logger.debug("case_input_ready", prompt=payload_summary(rendered))
         cache_key = response_cache_key(
             provider=self.model_version.provider,
             resolved_version=self.model_version.resolved_version,
@@ -472,6 +624,7 @@ class Executor:
                 if cached_payload:
                     cached = True
                     response = _response_from_cache(cached_payload)
+                    logger.debug("cache_hit", cache_key=cache_key)
 
         if response is None:
             messages = [Message(role="user", content=rendered)]
@@ -489,12 +642,24 @@ class Executor:
             )
             for attempt in range(config.max_retries + 1):
                 start = datetime.now(UTC)
+                attempt_timer = StageTimer()
+                logger.debug("provider_attempt_started", attempt=attempt + 1)
                 try:
-                    with self.tracer.start_as_current_span("provider.call"):
+                    with self.tracer.start_as_current_span("provider.call") as provider_span:
+                        provider_span.set_attribute("gen_ai.request.model", self.model)
+                        provider_span.set_attribute("eval.attempt", attempt + 1)
                         response = await asyncio.wait_for(
                             self.provider.generate(self.model, req),
                             timeout=config.request_timeout_s,
                         )
+                        if response.prompt_tokens is not None:
+                            provider_span.set_attribute(
+                                "gen_ai.usage.input_tokens", response.prompt_tokens
+                            )
+                        if response.completion_tokens is not None:
+                            provider_span.set_attribute(
+                                "gen_ai.usage.output_tokens", response.completion_tokens
+                            )
                     attempt_log.append(
                         {
                             "attempt": attempt + 1,
@@ -502,6 +667,14 @@ class Executor:
                             "duration_ms": response.total_ms,
                             "at": start.isoformat(),
                         }
+                    )
+                    logger.debug(
+                        "provider_attempt_finished",
+                        attempt=attempt + 1,
+                        duration_ms=attempt_timer.elapsed_ms,
+                        prompt_tokens=response.prompt_tokens,
+                        completion_tokens=response.completion_tokens,
+                        finish_reason=response.finish_reason.value,
                     )
                     if cache_enabled:
                         async with session_scope() as session:
@@ -529,8 +702,15 @@ class Executor:
                             "error_class": "timeout",
                             "duration_ms": None,
                             "at": start.isoformat(),
-                            "message": str(exc),
+                            **exception_summary(exc),
                         }
+                    )
+                    logger.warning(
+                        "provider_attempt_finished",
+                        attempt=attempt + 1,
+                        duration_ms=attempt_timer.elapsed_ms,
+                        error_class="timeout",
+                        **exception_summary(exc),
                     )
                     break
                 except Exception as exc:
@@ -541,7 +721,7 @@ class Executor:
                             "error_class": error_class.value,
                             "duration_ms": None,
                             "at": start.isoformat(),
-                            "message": str(exc),
+                            **exception_summary(exc),
                         }
                     )
                     if error_class not in (
@@ -557,7 +737,16 @@ class Executor:
                             self.settings.default_retry_cap_s,
                         )
                         retry_after = _retry_after_seconds(exc)
-                        await asyncio.sleep(max(jitter, retry_after or 0.0))
+                        delay = max(jitter, retry_after or 0.0)
+                        logger.warning(
+                            "provider_retry_scheduled",
+                            attempt=attempt + 1,
+                            next_attempt=attempt + 2,
+                            error_class=error_class.value,
+                            delay_s=round(delay, 3),
+                            **exception_summary(exc),
+                        )
+                        await asyncio.sleep(delay)
                     else:
                         harness_error = True
 
@@ -592,3 +781,27 @@ class Executor:
                 raw_response=response.raw if response else None,
                 trace_id=trace_id,
             )
+        attempts = len(attempt_log) or 1
+        case_log = logger.debug if outcome == FailureOutcome.PASSED else logger.warning
+        case_log(
+            "case_finished",
+            outcome=outcome.value,
+            attempts=attempts,
+            cached=cached,
+            duration_ms=case_timer.elapsed_ms,
+            prompt_tokens=response.prompt_tokens if response else None,
+            completion_tokens=response.completion_tokens if response else None,
+            finish_reason=response.finish_reason.value if response else None,
+            prompt=payload_summary(rendered),
+            output=payload_summary(response.text if response else None),
+            trace_id=trace_id,
+        )
+        return ExecutionResult(
+            item.case_db_id,
+            item.case.external_id,
+            item.repeat_idx,
+            outcome,
+            attempts,
+            cached,
+            response.total_ms if response else None,
+        )

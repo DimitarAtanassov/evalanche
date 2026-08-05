@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,8 +24,14 @@ class Settings(BaseSettings):
     harness_version: str = "0.1.0"
     git_sha: str = "local"
     log_level: str = "INFO"
+    log_format: Literal["auto", "json", "console"] = "auto"
+    log_payloads: bool = False
+    log_payload_hashes: bool = False
+    log_payload_max_chars: int = Field(default=240, ge=0, le=4096)
+    log_progress_every: int = Field(default=100, ge=1)
     otel_enabled: bool = False
     otel_service_name: str = "evalanche"
+    otel_exporter_otlp_endpoint: str | None = None
     default_coverage_floor: float = 0.98
     default_max_retries: int = 5
     default_retry_base_s: float = 0.5

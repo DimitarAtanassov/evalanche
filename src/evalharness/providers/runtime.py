@@ -15,6 +15,9 @@ from evalharness.core.models import (
     ModelVersion,
 )
 from evalharness.core.protocols import Provider
+from evalharness.observability import exception_summary, get_logger
+
+logger = get_logger(__name__)
 
 
 class CircuitState(StrEnum):
@@ -62,20 +65,48 @@ class CircuitBreaker:
         if self.state == CircuitState.OPEN:
             assert self.opened_at is not None
             if time.monotonic() - self.opened_at < self.recovery_timeout_s:
+                logger.warning(
+                    "provider_circuit_rejected",
+                    state=self.state.value,
+                    failures=self.failures,
+                )
                 raise CircuitOpenError("provider circuit is open")
             self.state = CircuitState.HALF_OPEN
+            logger.info(
+                "provider_circuit_state_changed",
+                previous=CircuitState.OPEN.value,
+                current=self.state.value,
+                failures=self.failures,
+            )
         return self.state
 
     def success(self) -> None:
+        previous = self.state
         self.state = CircuitState.CLOSED
         self.failures = 0
         self.opened_at = None
+        if previous != self.state:
+            logger.info(
+                "provider_circuit_state_changed",
+                previous=previous.value,
+                current=self.state.value,
+                failures=0,
+            )
 
     def failure(self) -> None:
+        previous = self.state
         self.failures += 1
         if self.state == CircuitState.HALF_OPEN or self.failures >= self.failure_threshold:
             self.state = CircuitState.OPEN
             self.opened_at = time.monotonic()
+        if previous != self.state:
+            logger.warning(
+                "provider_circuit_state_changed",
+                previous=previous.value,
+                current=self.state.value,
+                failures=self.failures,
+                threshold=self.failure_threshold,
+            )
 
 
 def estimate_tokens(req: GenerationRequest) -> int:
@@ -111,11 +142,26 @@ class ManagedProvider:
         state = self.breaker.before_call()
         queue_wait = await self.requests.acquire()
         queue_wait += await self.tokens.acquire(estimate_tokens(req))
+        logger.debug(
+            "provider_capacity_acquired",
+            provider=self.name,
+            model=model,
+            queue_wait_ms=round(queue_wait, 2),
+            estimated_tokens=estimate_tokens(req),
+            breaker_state=state.value,
+        )
         async with self.semaphore:
             try:
                 response = await self.provider.generate(model, req)
-            except Exception:
+            except Exception as exc:
                 self.breaker.failure()
+                logger.warning(
+                    "managed_provider_call_failed",
+                    provider=self.name,
+                    model=model,
+                    breaker_state=self.breaker.state.value,
+                    **exception_summary(exc),
+                )
                 raise
             self.breaker.success()
         raw = dict(response.raw)

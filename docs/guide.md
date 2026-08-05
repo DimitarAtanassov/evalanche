@@ -23,7 +23,7 @@ ships the full Phase‑2/3 surface:
 | Metrics | Full catalog via `MetricRegistry` (lexical, structured, classification, retrieval, overlap) + optional `bertscore_f1` (`metrics-ml` extra) + `EmbeddingService` / calibration helpers |
 | Statistics | `statistics/` — Wilson, BCa, paired bootstrap, McNemar, BH, Cohen's h, pass@k, power, flaky‑case detection |
 | Schema | Alembic through **`0003_foundation_correctness`** (`metric_config_sha256`, aggregate uniqueness, indexes, NULL‑safe model identity) |
-| Reports | JSON + self‑contained HTML (leadership / research / engineering views) + JUnit XML |
+| Reports | JSON + self‑contained HTML run dashboard (Vega‑Lite) + JUnit XML |
 
 There is **no** standalone `evalctl report` command — reports are written by
 `evalctl run` (and by library callers such as `scripts/run_release_e2e.py`) via
@@ -266,7 +266,9 @@ uv run alembic upgrade head
 ```
 
 `.env.example` keys: `DATABASE_URL`, `OLLAMA_BASE_URL`, `HARNESS_VERSION`, `GIT_SHA`,
-`LOG_LEVEL`, `OTEL_ENABLED`. OpenAI‑compatible runs also need
+`LOG_LEVEL`, `LOG_FORMAT`, `LOG_PAYLOADS`, `LOG_PAYLOAD_HASHES`,
+`LOG_PROGRESS_EVERY`, `OTEL_ENABLED`, and optional
+`OTEL_EXPORTER_OTLP_ENDPOINT`. OpenAI‑compatible runs also need
 `OPENAI_COMPATIBLE_BASE_URL` and `OPENAI_COMPATIBLE_MODEL_REVISION` (and optionally
 an API key).
 
@@ -713,7 +715,7 @@ missing quant does not collide incorrectly.
 | `run_id` | uuid FK→runs | no | |
 | `metric_name` / `metric_version` | text | | |
 | `metric_config_sha256` | text | no | **added/enforced by 0003** |
-| `slice_key` | text | no, default `__overall__` | |
+| `slice_key` | text | no, default `__overall__` | `__overall__`, or `dimension=value` from `cases.slices` |
 | `n` | int | no | |
 | `value` | float | no | |
 | `ci_low` / `ci_high` | float | yes | |
@@ -722,6 +724,11 @@ missing quant does not collide incorrectly.
 
 **Constraint (0003):** `uq_metric_aggregates_identity`
 `UNIQUE (run_id, metric_name, metric_version, slice_key, metric_config_sha256)`.
+
+`ScoringEngine.rescore_run` writes one `__overall__` row per metric plus one row per
+`dimension=value` found in `cases.slices`. A dimension with more than
+`max_slice_cardinality` (default 50) distinct values is skipped rather than emitting one
+aggregate row per case.
 
 #### `response_cache`
 
@@ -1195,11 +1202,23 @@ access lines.
 
 ### 7.1 Harness (structlog) logs
 
-`observability.setup_logging` emits JSON with ISO timestamps. Level from `LOG_LEVEL`
-(default `INFO`). Expect events like `shutdown_requested` on SIGTERM/SIGINT. With
-`OTEL_ENABLED=true`, spans `case` / `provider.call` are opened and `trace_id` is
-persisted on generation rows. Rich per‑request forensics live in
-`generations.attempt_log` (SQL §5.5 #12), not only in the log stream.
+`observability.setup_logging` emits ISO timestamps. `LOG_FORMAT=auto` selects readable
+console logs on a TTY and JSON in CI/redirection; force `json` or `console` when needed.
+Level comes from `LOG_LEVEL` (default `INFO`). Stable lifecycle events cover dataset
+validation, provider resolution, generation, attempts/retries/cache, scoring batches,
+slice aggregation, and report artifacts. Interactive CLI runs additionally show Rich
+stage progress with counts and ETA.
+
+Prompts and outputs are represented by `{chars}` by default. `LOG_PAYLOAD_HASHES=true`
+adds SHA‑256 for correlation, but is not anonymization for low‑entropy outputs. Set
+`LOG_PAYLOADS=true` only for scrubbed development data to add a bounded, redacted
+preview. Full payloads remain in the database, not the log stream.
+
+With `OTEL_ENABLED=true`, spans `run.generate → case → provider.call` and `run.score`
+are opened and `trace_id` is persisted on generation rows. Without an endpoint they use
+the in-memory exporter. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to an OTLP/HTTP `/v1/traces`
+endpoint for batched production export. See [operations.md](operations.md#observability)
+for the event vocabulary and privacy contract.
 
 ### 7.2 Decoding Ollama / llama.cpp logs
 
@@ -1285,8 +1304,10 @@ Line‑by‑line:
 
 ### 8.2 Observability
 
-- Structured JSON logs (structlog)
-- Optional OTel spans when `OTEL_ENABLED=true`
+- TTY-readable or structured JSON logs (structlog)
+- Rich stage progress driven by transport-neutral callbacks
+- Privacy-safe payload hashes/lengths; explicit opt-in redacted previews
+- Optional OTel spans with in-memory or batched OTLP/HTTP export
 - `trace_id` on generations for join across logs / DB / traces
 
 ### 8.3 FAQ
@@ -1322,7 +1343,7 @@ Only items that are **truly not on current `main`** (or intentionally unfinished
 | Durable pgvector write path + HNSW for embeddings | Table exists; hot path is in‑memory | `EmbeddingService` / models |
 | Registered `semantic_similarity` metric | Release script writes scores ad hoc | `scripts/run_release_e2e.py` |
 | Standalone `evalctl report` | Reports emitted by `run` / library `write_report` | CLI surface |
-| Per‑slice aggregate rows beyond `__overall__` | `slice_key` column ready; rollups mostly overall | scoring engine |
+| Comparison block inside the HTML report | `evalctl runs compare` emits JSON only | CLI surface |
 
 ---
 

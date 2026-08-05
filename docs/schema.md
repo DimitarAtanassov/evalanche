@@ -62,7 +62,7 @@ manifest — this is content addressing (principle #2) enforced in code.
 | `runs` | Job metadata: decode params, `config_sha256`, status, tenant, harness/git versions, optional `baseline_run_id` | Statuses: `queued`→`running`→`completed`\|`failed`\|`cancelled` |
 | `generations` | One row per `(run_id, case_id, repeat_idx)` — **never updated** after insert | Holds output, `outcome`, latency, `attempts`, `attempt_log`, `cached`, `raw_response`, `trace_id` |
 | `scores` | Metric results referencing `generation_id` — pass/fail **quality** lives here | Keyed by `(metric_name, metric_version, metric_config_sha256)` |
-| `metric_aggregates` | Per‑run rollups with CI method | Keyed by `(run_id, metric_name, metric_version, slice_key, metric_config_sha256)` |
+| `metric_aggregates` | Per‑run rollups with CI method, for `__overall__` and each `dimension=value` slice | Keyed by `(run_id, metric_name, metric_version, slice_key, metric_config_sha256)` |
 
 The `UNIQUE (run_id, case_id, repeat_idx)` constraint on `generations` *is* the resume
 mechanism: idempotent checkpoint inserts use `ON CONFLICT DO NOTHING`. The `scores`

@@ -37,7 +37,37 @@ def test_poc_report_is_publishable_and_complete() -> None:
     assert meta["config_sha256"] == report["config_sha256"]
 
 
+def test_poc_report_rolls_up_slices() -> None:
+    report = json.loads((POC_DIR / "report.json").read_text(encoding="utf-8"))
+    slices = {row["slice"] for row in report["metric_aggregates"]}
+    assert "__overall__" in slices
+    # fixtures/sample_dataset tags every case with difficulty and lang.
+    assert {"difficulty=easy", "difficulty=hard", "lang=en"} <= slices
+
+
 def test_poc_html_contains_run_id() -> None:
     html = (POC_DIR / "report.html").read_text(encoding="utf-8")
     assert "00000000-0000-4000-8000-0000000000c1" in html
-    assert "Pass Rate" in html
+    assert "Pass rate" in html
+    assert "What was evaluated, and on what?" in html
+    assert "Sampled cases" in html
+
+
+def test_poc_report_includes_evaluation_context() -> None:
+    report = json.loads((POC_DIR / "report.json").read_text(encoding="utf-8"))
+    assert report["schema_version"] == "2.1"
+    assert report["model"]["provider"] == "mock"
+    assert report["model"]["resolved_version"] == MOCK_DIGEST
+    assert report["dataset"]["name"]
+    assert report["dataset"]["case_count"] == 5
+    assert report["prompt_template"]["body"]
+    assert isinstance(report["decode_params"], dict)
+    assert len(report["case_examples"]) == 5
+    example = report["case_examples"][0]
+    assert {"case_id", "input", "reference", "output", "passed"} <= set(example)
+    assert "raw_response" not in example
+
+
+def test_poc_html_is_offline_self_contained() -> None:
+    html = (POC_DIR / "report.html").read_text(encoding="utf-8")
+    assert 'src="http' not in html

@@ -74,7 +74,7 @@ flowchart LR
 | Statistics | `evalharness/statistics/{core,comparison}.py` | Wilson, BCa, paired bootstrap, McNemar, BH, Cohen's h, pass@k, power, flaky detection |
 | Store | `evalharness/store/{models,repository,db}.py` | Async SQLAlchemy ORM, repository, Alembic‑owned session/engine |
 | Reporting | `evalharness/reporting/report.py` + `templates/` | Coverage, histograms, latency, CIs; JSON/HTML/JUnit; publishability gate |
-| Hashing / observability | `evalharness/{hashing,observability}.py` | Canonical SHA‑256 hashing; structlog + OpenTelemetry |
+| Hashing / observability | `evalharness/{hashing,observability,cli_progress}.py` | Canonical SHA‑256; structured events, privacy-safe payload summaries, progress callbacks/Rich adapter, OpenTelemetry |
 | Migrations | `alembic/versions/000{1,2,3}_*.py` | Schema evolution; `0003` adds correctness constraints/indexes |
 
 ## Seams (do not violate)

@@ -27,7 +27,8 @@ Services ([`compose.yaml`](../compose.yaml)):
 Compose credentials default to user/password/db = `evalharness`. Configuration is
 env‑backed via `evalharness/config.py`; the keys live in `.env.example`
 (`DATABASE_URL`, `OLLAMA_BASE_URL`, `HARNESS_VERSION`, `GIT_SHA`, `LOG_LEVEL`,
-`OTEL_ENABLED`, and the `OPENAI_COMPATIBLE_*` trio for that provider).
+`LOG_FORMAT`, `LOG_PAYLOADS`, `LOG_PAYLOAD_HASHES`, `OTEL_ENABLED`, optional
+`OTEL_EXPORTER_OTLP_ENDPOINT`, and the `OPENAI_COMPATIBLE_*` trio for that provider).
 
 ## CLI recipes
 
@@ -116,13 +117,63 @@ similarity, baseline‑vs‑candidate comparison), see `scripts/run_release_e2e.
 
 ## Observability
 
-- **Structured logs** — JSON via structlog (`run_id`, `case_id`, and per‑attempt fields
-  when bound). Level from `LOG_LEVEL` (default `INFO`).
-- **Tracing** — OpenTelemetry spans (`case`, `provider.call`) when `OTEL_ENABLED=true`;
-  `trace_id` is persisted on generation rows so you can join a log line, a DB row, and
-  a trace.
-- **Forensics** — the richest per‑request detail lives in `generations.attempt_log`
-  (see the SQL library in [guide.md §5.5](guide.md#55-query-library)).
+Observability has three separate adapters over the same pipeline lifecycle:
+
+- **Terminal progress** — interactive `evalctl run` and `runs rescore` commands show the
+  current stage, completed/total, elapsed time, ETA, valid/other output counts, retries, and
+  cache hits. Generation progress says `valid_outputs` rather than “passed”: this stage
+  only knows whether output was generated successfully, not whether a later metric will
+  accept it. Core execution emits transport‑neutral `ProgressEvent` values; Rich is
+  confined to `cli_progress.py`, so a web/socket adapter can be added without changing
+  the executor.
+- **Structured logs** — structlog emits readable console logs on a TTY and deterministic
+  JSON elsewhere (`LOG_FORMAT=auto`; force `json` or `console`). Context is bound for
+  `run_id`, provider/model, case, repeat, attempt, metric, and slice. Stable lifecycle
+  events cover generate → score → aggregate → report.
+- **Tracing** — OpenTelemetry spans `run.generate → case → provider.call` and
+  `run.score` carry model, attempt, token usage, run identity, and counts. With
+  `OTEL_ENABLED=true`, tests/local runs default to an in‑memory exporter. Set
+  `OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318/v1/traces` to use the batched
+  OTLP/HTTP production exporter. `trace_id` is persisted on generation rows.
+
+### Event vocabulary
+
+| Stage | Stable events |
+|-------|---------------|
+| Setup | `dataset_validation_started`, `dataset_validated`, `provider_resolution_started`, `provider_resolved`, `pipeline_planning_started`, `pipeline_planning_finished`, `run_created` |
+| Generate | `generation_started`, `case_input_ready`, `cache_hit`, `provider_attempt_started`, `provider_attempt_finished`, `provider_retry_scheduled`, `case_finished`, `generation_finished` |
+| Capacity | `provider_capacity_acquired`, `provider_circuit_state_changed`, `provider_circuit_rejected` |
+| Score | `scoring_started`, `generation_scored`, `scoring_batch_finished`, `aggregate_written`, `scoring_finished` |
+| Report | `report_build_started`, `report_build_finished`, `report_artifact_written`, `reporting_finished` |
+
+`pipeline_finished` provides the final publishability, coverage, pass rate, and elapsed
+time. Any uncaught stage error emits `pipeline_failed` with a bounded/redacted exception
+summary before it is re-raised and the CLI exits non-zero.
+
+INFO logs describe stage lifecycle plus bounded `generation_progress` checkpoints every
+`LOG_PROGRESS_EVERY` cases (default 100). DEBUG adds successful per-case input/output
+summaries and per-generation score/aggregate detail. Failed cases stay at WARNING so
+they are never hidden by normal production verbosity. Errors are bounded and
+credential‑redacted.
+
+### Payload safety
+
+Prompts, references, outputs, provider responses, API keys, and headers are sensitive.
+They are **not emitted by default**. Payload fields contain only character count:
+
+```json
+{"event":"case_input_ready","prompt":{"chars":83}}
+```
+
+Set `LOG_PAYLOAD_HASHES=true` only when cross-event correlation is necessary. Plain
+SHA‑256 is intentionally opt-in: hashes of low-entropy outputs such as `"1"` can be
+reversed by enumeration and are not anonymization.
+
+For a PII‑scrubbed development dataset only, set `LOG_PAYLOADS=true` to add a one-line,
+redacted preview bounded by `LOG_PAYLOAD_MAX_CHARS` (default 240; maximum 4096). This
+does not change database persistence. Full forensic records remain in
+`generations.attempt_log`, `output`, and `raw_response`; join via `run_id`, `case_id`,
+and persisted `trace_id` rather than copying raw content into the log platform.
 
 ## Failure modes
 

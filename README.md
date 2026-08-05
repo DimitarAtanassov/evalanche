@@ -25,7 +25,9 @@ the CLI is `evalctl`.
 | Zero‑inference score / rescore | Shipped | `evalctl score`, `evalctl runs rescore` |
 | Statistics: Wilson, BCa, paired bootstrap, McNemar, BH, Cohen's h, pass@k, power | Shipped | `statistics/` |
 | Paired run comparison | Shipped | `evalctl runs compare` |
-| Reports: JSON + self‑contained HTML + JUnit (leadership/research/engineering views) | Shipped | `reporting/report.py` |
+| Reports: JSON + self‑contained HTML run dashboard + JUnit | Shipped | `reporting/report.py` |
+| Per‑slice metric rollups (`dimension=value` beside `__overall__`) | Shipped | `scoring/engine.py` |
+| Pipeline observability: Rich progress, structured logs, privacy-safe payload lineage, OTLP tracing | Shipped | `observability.py`, `cli_progress.py` |
 | Optional BERTScore | Shipped (extra) | `metrics-ml` extra, `scoring/ml.py` |
 | Object storage for raw payloads, LLM‑as‑judge, `evald` HTTP API | Deferred | [`DEFERRED.md`](DEFERRED.md), `docs/` |
 

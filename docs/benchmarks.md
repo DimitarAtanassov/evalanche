@@ -15,7 +15,8 @@ throughput and memory are bounded by configuration, not by dataset size.
 - **Deduplicated embeddings.** The embedding service batches in groups of 64 and
   deduplicates by content hash, so repeated text is embedded once.
 - **Lean reports.** Reporting queries a single run and never loads raw provider payloads
-  into leadership artifacts.
+  into published artifacts. A bounded, truncated sample of inputs/outputs and the prompt
+  body is included for dashboard context only.
 
 ## The 100k benchmark
 

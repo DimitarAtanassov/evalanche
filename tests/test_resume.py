@@ -9,14 +9,16 @@ import pytest
 from evalharness.datasets import load_dataset, validate_dataset
 from evalharness.execution.executor import Executor, render_prompt
 from evalharness.hashing import sha256_hex
-from evalharness.reporting.report import build_report
+from evalharness.observability import PipelineStage, ProgressEvent
+from evalharness.reporting.report import write_report
+from evalharness.scoring.engine import ScoringEngine
 from evalharness.store.db import session_scope
 from evalharness.store.repository import RunRepository
 from tests.conftest import MockProvider
 
 
 @pytest.mark.asyncio
-async def test_resume_produces_same_outputs(db_ready) -> None:
+async def test_resume_produces_same_outputs(db_ready, tmp_path: Path) -> None:
     bundle = load_dataset(Path("fixtures/sample_dataset"))
     assert validate_dataset(bundle).valid
     template_body = Path("fixtures/templates/qa.jinja").read_text(encoding="utf-8")
@@ -75,7 +77,8 @@ async def test_resume_produces_same_outputs(db_ready) -> None:
         partial_pairs = {(g.case_id, g.repeat_idx, g.output) for g in partial_gens}
 
     # Resume remaining
-    await executor.execute_run(run_id, concurrency=2)
+    progress: list[ProgressEvent] = []
+    await executor.execute_run(run_id, concurrency=2, progress=progress.append)
 
     async with session_scope() as session:
         repo = RunRepository(session)
@@ -85,8 +88,26 @@ async def test_resume_produces_same_outputs(db_ready) -> None:
         assert partial_pairs.issubset(all_pairs)
         assert all(g.raw_response and g.raw_response["mock"] is True for g in all_gens)
 
-    report = await build_report(run_id, coverage_floor=0.0)
+    await ScoringEngine().rescore_run(run_id, ["exact_match"], progress=progress.append)
+    report = await write_report(
+        run_id,
+        tmp_path,
+        coverage_floor=0.0,
+        progress=progress.append,
+    )
     assert report.config_sha256
     assert report.model_digest == "mock-digest-abc123"
     assert "p50" in report.latency
     assert report.pass_rate_ci[0] <= report.pass_rate <= report.pass_rate_ci[1]
+    stages = {event.stage for event in progress}
+    assert {
+        PipelineStage.GENERATING,
+        PipelineStage.SCORING,
+        PipelineStage.AGGREGATING,
+        PipelineStage.REPORTING,
+    } <= stages
+    assert progress[-1].stage == PipelineStage.REPORTING
+    assert progress[-1].completed == progress[-1].total == 3
+    assert (tmp_path / f"{run_id}.json").is_file()
+    assert (tmp_path / f"{run_id}.html").is_file()
+    assert (tmp_path / f"{run_id}.xml").is_file()
