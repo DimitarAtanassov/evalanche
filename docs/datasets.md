@@ -1,8 +1,8 @@
 # Dataset policy and catalog
 
-Phase 4 separates repository-authored harness fixtures from externally sourced
-benchmarks. A committed smoke fixture proves task-shape and metric wiring. It is
-not evidence of model quality on the named public benchmark.
+The dataset pack contract separates repository-authored harness fixtures from
+externally sourced benchmarks. A committed smoke fixture proves task-shape and
+metric wiring. It is not evidence of model quality on the named public benchmark.
 
 ## Materialization contract
 
@@ -38,13 +38,13 @@ Validation of the written pack remains the fail-closed gate.
 
 ## Manifest schema versions
 
-Packs carrying `schema_version: 0.1` are held to the full Phase 4 contract:
-tier, source pin, adapter identity, task metrics, contamination risk, and
-per-case provenance. Manifests with no `schema_version` are legacy harness
+Packs carrying `schema_version: 0.1` are held to the full versioned manifest
+contract: tier, source pin, adapter identity, task metrics, contamination risk,
+and per-case provenance. Manifests with no `schema_version` are legacy harness
 fixtures (`fixtures/sample_dataset`, `fixtures/large_dataset`). They are still
 loaded and validated against the legacy key set, and unknown keys are reported
-as warnings rather than errors. This compatibility is intentional so Phase 1 to
-3 fixtures keep working; new packs must be materialized, never hand-written.
+as warnings rather than errors. This compatibility is intentional so older
+fixtures keep working; new packs must be materialized, never hand-written.
 
 ## Redistribution policy
 

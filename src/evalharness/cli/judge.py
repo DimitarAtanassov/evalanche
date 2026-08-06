@@ -8,7 +8,11 @@ from pathlib import Path
 import typer
 
 from evalharness.cli._common import _emit_json, console, logger
-from evalharness.cli._provider import _close_provider, _provider_call_policy
+from evalharness.cli._provider import (
+    _close_provider,
+    _provider_call_policy,
+    _require_live_scoring_provider,
+)
 from evalharness.config import get_settings
 from evalharness.judge import (
     JudgeError,
@@ -121,6 +125,7 @@ async def _judge_run_live_async(
     concurrency: int,
     request_timeout_s: float | None,
 ) -> JudgmentArtifact:
+    _require_live_scoring_provider(provider_name)
     settings = get_settings()
     provider = build_managed_provider(
         provider_name,

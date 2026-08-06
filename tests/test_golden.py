@@ -1,10 +1,11 @@
 """Golden tests for metric stability."""
 
+import pytest
+
 from evalharness.core.enums import FailureOutcome, FinishReason, TaskType
 from evalharness.core.models import Case, Generation, ScoringContext
 from evalharness.scoring.exact_match import ExactMatchMetric
 from evalharness.scoring.normalizer import Normalizer, NormalizerConfig
-from evalharness.scoring.stats import wilson_interval
 
 
 def test_golden_exact_match_and_wilson() -> None:
@@ -44,6 +45,7 @@ def test_golden_exact_match_and_wilson() -> None:
 
     agg = metric.aggregate([score])
     assert agg.value == 1.0
-    low, high = wilson_interval(1, 1)
-    assert agg.ci_low == low
-    assert agg.ci_high == high
+    # Pinned literals, not a re-run of wilson_interval: the published lower bound moved
+    # by ~1e-6 when the z constant became norm.ppf(0.975), and nothing else catches that.
+    assert agg.ci_low == pytest.approx(0.20654931437723745, abs=1e-12)
+    assert agg.ci_high == pytest.approx(1.0, abs=1e-12)

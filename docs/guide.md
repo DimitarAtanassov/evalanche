@@ -22,7 +22,7 @@ ships the full Phase‑2/3 surface:
 | Providers | `ollama`, `mock`, `openai_compatible`, wrapped by `ManagedProvider` (token‑bucket RPM/TPM + concurrency + circuit breaker) |
 | Metrics | Full catalog via `MetricRegistry` (lexical, structured, classification, retrieval, overlap) + optional `bertscore_f1` (`metrics-ml` extra) + `EmbeddingService` / calibration helpers |
 | Statistics | `statistics/` — Wilson, BCa, paired bootstrap, McNemar, BH, Cohen's h, pass@k, power, flaky‑case detection |
-| Schema | Alembic through **`0003_foundation_correctness`** (`metric_config_sha256`, aggregate uniqueness, indexes, NULL‑safe model identity) |
+| Schema | Alembic through **`0004_drop_unused_forward_tables`** (correctness indexes through `0003`, then drop unused forward tables) |
 | Reports | JSON + self‑contained HTML run dashboard (Vega‑Lite) + JUnit XML |
 
 There is **no** standalone `evalctl report` command — reports are written by
@@ -271,11 +271,11 @@ uv run alembic upgrade head
 `OTEL_EXPORTER_OTLP_ENDPOINT`. OpenAI‑compatible runs also need
 `OPENAI_COMPATIBLE_BASE_URL` and `OPENAI_COMPATIBLE_MODEL_REVISION` (and optionally
 an API key).
-Phase 6 live scoring budgets are independently configurable with
+Judge and RAG live scoring budgets are independently configurable with
 `JUDGE_PROVIDER_RPM`, `JUDGE_PROVIDER_TPM`, `NLI_PROVIDER_RPM`, and
 `NLI_PROVIDER_TPM`.
 
-Head revision is **`0003_foundation_correctness`**. Confirm:
+Head revision is **`0004_drop_unused_forward_tables`**. Confirm:
 
 ```bash
 uv run alembic current
@@ -452,7 +452,8 @@ uv run evalctl calibrate dev-similarities.jsonl
 
 ### 4.8 Live judge and RAG NLI
 
-Live Phase 6 scoring is file-primary and requires no database. Ollama resolves the
+Live judge and RAG NLI scoring is file-primary and requires no database. Ollama
+resolves the
 installed model digest. OpenAI-compatible endpoints require
 `OPENAI_COMPATIBLE_BASE_URL` and an immutable
 `OPENAI_COMPATIBLE_MODEL_REVISION`.
@@ -606,7 +607,7 @@ docker exec -it evalv1-postgres-1 psql -U evalharness -d evalharness
 PGPASSWORD=evalharness psql -h localhost -p 5432 -U evalharness -d evalharness
 ```
 
-Live head on a healthy local stack: `0003_foundation_correctness`.
+Live head on a healthy local stack: `0004_drop_unused_forward_tables`.
 
 ### 5.2 Entity‑relationship model
 
@@ -621,11 +622,6 @@ erDiagram
   generations ||--o{ scores : scored_as
   runs ||--o{ metric_aggregates : rolls_up
   runs ||--o{ runs : baseline
-  model_versions ||--o{ embeddings : embedded_by
-  model_versions ||--o{ judgments : judges
-  generations ||--o{ judgments : judged
-  cases ||--o{ annotations : labeled
-  generations ||--o{ annotations : labeled
 ```
 
 Three groups:
@@ -633,13 +629,14 @@ Three groups:
 - **Definitions** (append‑once, content‑addressed): `datasets`, `cases`,
   `prompt_templates`, `model_versions`
 - **Run + immutable outputs**: `runs`, `generations`, `scores`, `metric_aggregates`
-- **Forward‑compatible / cache**: `judgments`, `annotations`, `embeddings`,
-  `response_cache`
+- **Operational cache**: `response_cache`
+
+Judge, calibration, and RAG evidence are file artifacts, not rows.
 
 ### 5.3 Table‑by‑table reference
 
 All types/constraints below match `src/evalharness/store/models.py` and the live
-`\d+` output after migration `0003`.
+`\d+` output after migration `0004`.
 
 #### `datasets`
 
@@ -794,18 +791,7 @@ aggregate row per case.
 | `response` | jsonb | no | serialized generation payload |
 | `created_at` | timestamptz | no | |
 
-#### Forward‑compatible tables
-
-- **`judgments`** — LLM‑as‑judge / pairwise (rubric, score, preference, swap_position,
-  reasoning, evidence, cost). Schema present; judge subsystem not shipped.
-- **`annotations`** — human labels (`annotator_id`, `label` JSONB, `adjudicated`).
-- **`embeddings`** — `content_sha256` + `embedding_model_version_id` +
-  `vec vector(1024)`, `UNIQUE (content_sha256, embedding_model_version_id)`.
-  `EmbeddingService` today dedupes in‑process; durable pgvector writes / HNSW are
-  not yet wired on the hot path. **Dim caveat:** column is fixed `vector(1024)`;
-  `nomic-embed-text` is 768‑d — release e2e scores cosine in application memory.
-
-### 5.4 What migration `0003` added
+### 5.4 What migrations `0003` and `0004` added
 
 From `alembic/versions/0003_foundation_correctness.py`:
 
@@ -814,6 +800,11 @@ From `alembic/versions/0003_foundation_correctness.py`:
 3. Btree indexes: `ix_generations_run_id`, `ix_scores_generation_id`,
    `ix_runs_status_started_at`, `ix_generations_run_case_repeat`
 4. NULL‑safe unique index `uq_model_versions_identity`
+
+From `alembic/versions/0004_drop_unused_forward_tables.py`:
+
+1. Dropped unused `judgments`, `annotations`, and `embeddings` tables (no repository
+   writers; judge/RAG remain file‑primary; embeddings stay in‑process)
 
 ### 5.5 Query library
 
@@ -1043,22 +1034,6 @@ WHERE g.id = :generation_id;
 `runtime` from ManagedProvider. Final chunk carries `done_reason`,
 `prompt_eval_count`, `eval_count`.
 
-**13. Embedding table lookups**
-
-```sql
-SELECT e.id, e.content_sha256, mv.model, mv.resolved_version,
-       vector_dims(e.vec) AS dims
-FROM embeddings e
-JOIN model_versions mv ON mv.id = e.embedding_model_version_id
-LIMIT 20;
--- Once populated at matching dimension:
--- SELECT content_sha256, vec <=> :query_vec AS cosine_distance
--- FROM embeddings ORDER BY vec <=> :query_vec LIMIT 10;
-```
-
-*How to read it:* Often empty on current paths (in‑memory `EmbeddingService` cache).
-`<=>` is pgvector cosine distance.
-
 ---
 
 ## 6. Metric catalog & statistics
@@ -1220,8 +1195,9 @@ writes those scores explicitly (see `scripts/run_release_e2e.py`) with BCa CIs o
 mean. Thresholds belong on **dev** via `evalctl calibrate` (report ROC‑AUC / PR‑AUC /
 operating point) — never a silent magic `0.8` on holdout.
 
-**Gotcha:** `embeddings.vec` is `vector(1024)` while some local embedders are 768‑d;
-keep dimension in the metric config hash and avoid forcing mismatched inserts.
+**Gotcha:** `EmbeddingService` is in‑process only (no durable vector table). Pin the
+embedding model revision and dimension in any metric config hash you invent when you
+add a registered semantic metric.
 
 ### 6.7 Statistics package
 
@@ -1394,10 +1370,10 @@ Only items that are **truly not on current `main`** (or intentionally unfinished
 | Item | Reality | Source |
 |------|---------|--------|
 | Object storage for raw payloads | JSONB in Postgres by design | [`DEFERRED.md`](../DEFERRED.md) |
-| Blocking release policy for judge/RAG signals | Phase 6 artifacts remain informational until calibrated and attached | Phase 6 contracts |
-| `evald` HTTP API, OIDC, webhooks, `gates.yaml` service | Not shipped | Phase‑5 notes |
+| Blocking release policy for judge/RAG signals | Judge/RAG artifacts remain informational until calibrated and attached | Supplement artifact contracts |
+| `evald` HTTP API, OIDC, webhooks, `gates.yaml` service | Not shipped | Deferred product surface |
 | Native Anthropic / Google adapters | Only `openai_compatible` + Ollama + mock | Provider package |
-| Durable pgvector write path + HNSW for embeddings | Table exists; hot path is in‑memory | `EmbeddingService` / models |
+| Durable pgvector write path + HNSW for embeddings | Not shipped; `EmbeddingService` is in‑memory only | `scoring/embeddings.py` |
 | Registered `semantic_similarity` metric | Release script writes scores ad hoc | `scripts/run_release_e2e.py` |
 | Standalone `evalctl report` | Reports emitted by `run` / library `write_report` | CLI surface |
 | Comparison block inside the HTML report | `evalctl runs compare` emits JSON only | CLI surface |

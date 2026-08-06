@@ -6,6 +6,20 @@ from evalharness.config import get_settings
 from evalharness.core.protocols import Provider
 from evalharness.providers.call_policy import ProviderCallPolicy
 
+_LIVE_SCORING_PROVIDERS = frozenset({"ollama", "openai_compatible"})
+
+
+def _require_live_scoring_provider(provider_name: str) -> None:
+    """Reject provider names the live paths carry no rate-limit configuration for.
+
+    The run path deliberately falls through to the entry-point registry, so the guard
+    lives here rather than in ``build_managed_provider``.
+    """
+    if provider_name not in _LIVE_SCORING_PROVIDERS:
+        raise ValueError(
+            f"live scoring provider must be ollama or openai_compatible, got {provider_name!r}"
+        )
+
 
 def _provider_call_policy(request_timeout_s: float | None) -> ProviderCallPolicy:
     settings = get_settings()

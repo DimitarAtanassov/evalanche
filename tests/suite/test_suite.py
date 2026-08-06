@@ -652,7 +652,7 @@ def test_cli_suite_validate_happy_path() -> None:
     assert json.loads(result.stdout) == {
         "compares": 1,
         "members": 4,
-        "name": "phase-5-golden",
+        "name": "suite-golden",
         "schema_version": "0.1",
         "valid": True,
     }

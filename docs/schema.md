@@ -21,8 +21,9 @@ The schema divides cleanly into three groups that mirror the [data plane](datapl
    `prompt_templates`, `model_versions`.
 2. **Run + immutable outputs** — the evaluation record: `runs`, `generations`,
    `scores`, `metric_aggregates`.
-3. **Forward‑compatible + cache** — reserved and operational: `judgments`,
-   `annotations`, `embeddings`, `response_cache`.
+3. **Operational cache** — `response_cache` for temperature‑0 provider responses.
+
+Judge, calibration, and RAG evidence are **file artifacts**, not rows.
 
 ## Entity relationships
 
@@ -37,9 +38,6 @@ erDiagram
   generations ||--o{ scores : scored_as
   runs ||--o{ metric_aggregates : rolls_up
   runs ||--o{ runs : baseline
-  model_versions ||--o{ embeddings : embedded_by
-  generations ||--o{ judgments : judged
-  cases ||--o{ annotations : labeled
 ```
 
 ## Definitions (mostly immutable after insert)
@@ -70,13 +68,15 @@ uniqueness is the **rescore‑safety** constraint: rescoring with the same metri
 is idempotent, while a changed normalizer (new `metric_config_sha256`) writes a *new*
 row beside the old one. History is additive.
 
-## Forward‑compatible + cache
+## Operational cache
 
-- `judgments`, `annotations`, `embeddings` — reserved for LLM‑as‑judge, human labels,
-  and durable embedding storage. Schema present; hot paths not yet wired (see
-  [guide.md §8.4](guide.md#84-known-gaps--deferred)).
 - `response_cache` — `cache_key` PK → JSON response payload (`ON CONFLICT DO NOTHING`
   on put). See [dataplane.md](dataplane.md#cache-key).
+
+Judge, calibration, and RAG evidence stay file‑primary; there is no durable
+`judgments` / `annotations` / `embeddings` write path. See
+[architecture.md](architecture.md) (artifact model) and
+[guide.md §8.4](guide.md#84-known-gaps--deferred).
 
 ## Migrations
 
@@ -85,8 +85,9 @@ row beside the old one. History is additive.
 | `0001_initial` | Full baseline DDL (`IF NOT EXISTS` guards for existing PoC DBs) |
 | `0002_raw_response_jsonb` | `raw_response` JSONB; drop legacy `raw_uri` |
 | `0003_foundation_correctness` | Metric‑aggregate identity + `metric_config_sha256 NOT NULL`; btree indexes (`ix_generations_run_id`, `ix_scores_generation_id`, `ix_runs_status_started_at`, `ix_generations_run_case_repeat`); NULL‑safe `uq_model_versions_identity` |
+| `0004_drop_unused_forward_tables` | Drop unused `judgments`, `annotations`, and `embeddings` (no repository writers) |
 
-The live head is **`0003_foundation_correctness`**. Confirm with `uv run alembic current`.
+The live head is **`0004_drop_unused_forward_tables`**. Confirm with `uv run alembic current`.
 
 Bootstrap:
 

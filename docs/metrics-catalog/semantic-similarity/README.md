@@ -109,10 +109,10 @@ references \(r_1..r_m\):
 - **Max‑reference vs centroid differ.** `cosine_max_reference` rewards matching *any* one
   reference (lenient); the asymmetric centroid rewards matching the *average* of references
   (stricter, smoother). Pick deliberately.
-- **Dimension mismatch is a real trap.** `embeddings.vec` is `vector(1024)` in Postgres
-  while some local embedders (nomic) are 768‑d. The hot path is **in‑memory** by design; a
-  durable pgvector write path + HNSW is [deferred](../../guide.md#84-known-gaps--deferred).
-  Don't force 768‑d vectors into a 1024‑d column.
+- **Dimension mismatch is a real trap.** Local embedders disagree on width (nomic is
+  768‑d; other models differ). The hot path is **in‑memory** by design; a durable
+  pgvector write path + HNSW is [deferred](../../guide.md#84-known-gaps--deferred).
+  Pin dimension into any future metric config hash.
 - **Not registered.** You can't `runs rescore --metrics semantic_similarity`; score it in
   research/release code until a metric is added.
 
@@ -132,6 +132,5 @@ references \(r_1..r_m\):
 - Code: [`EmbeddingService`](../../../src/evalharness/scoring/embeddings.py); release usage
   in `scripts/run_release_e2e.py`.
 - Guide: [§6.6](../../guide.md#66-semantic-similarity-embeddings),
-  [§8.4](../../guide.md#84-known-gaps--deferred). SQL: query 13 in
-  [§5.5](../../guide.md#55-query-library).
+  [§8.4](../../guide.md#84-known-gaps--deferred).
 - Narrative: [`metrics.md`](../../metrics.md#semantic-similarity).

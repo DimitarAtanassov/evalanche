@@ -9,7 +9,11 @@ from typing import Any
 import typer
 
 from evalharness.cli._common import _emit_json, console, logger
-from evalharness.cli._provider import _close_provider, _provider_call_policy
+from evalharness.cli._provider import (
+    _close_provider,
+    _provider_call_policy,
+    _require_live_scoring_provider,
+)
 from evalharness.config import get_settings
 from evalharness.observability import exception_summary, setup_logging
 from evalharness.providers.factory import build_managed_provider
@@ -97,6 +101,7 @@ async def _rag_evidence_live_async(
     concurrency: int,
     request_timeout_s: float | None,
 ) -> dict[str, Any]:
+    _require_live_scoring_provider(provider_name)
     settings = get_settings()
     provider = build_managed_provider(
         provider_name,

@@ -1,5 +1,5 @@
 schema_version: "0.1"
-name: phase-5-golden
+name: suite-golden
 description: "Two task families across small and large mock model configurations."
 member_runs:
   - path: qa-baseline.json

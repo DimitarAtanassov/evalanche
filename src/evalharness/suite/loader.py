@@ -16,6 +16,7 @@ from evalharness.core.constants import (
     OVERALL_SLICE,
     REPORT_SCHEMA_VERSION,
     SUITE_SCHEMA_VERSION,
+    SUPPLEMENT_SCHEMA_VERSION,
 )
 from evalharness.hashing import calibration_body_digest
 from evalharness.suite.models import (
@@ -31,8 +32,6 @@ from evalharness.suite.models import (
 )
 
 RUN_SCHEMA_VERSION = REPORT_SCHEMA_VERSION
-# Judge calibration artifact, versioned independently of the suite and run schemas.
-PHASE_6_SCHEMA_VERSION = "0.1"
 
 
 class SuiteValidationError(ValueError):
@@ -153,7 +152,7 @@ def _validate_supplement(
     path: Path,
     kind: Literal["calibration", "judge", "rag"],
 ) -> None:
-    _require_schema(payload, PHASE_6_SCHEMA_VERSION, path)
+    _require_schema(payload, SUPPLEMENT_SCHEMA_VERSION, path)
     if kind == "calibration":
         _validate_calibration(payload, path)
         return

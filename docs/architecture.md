@@ -156,9 +156,6 @@ refuses a RAG artifact whose `gating_allowed` is anything but `false`. Likewise,
 `evalctl judge attach-calibration` re‑derives both the calibration body digest and the
 judgment identity digest rather than trusting either as written.
 
-The `judgments` and `annotations` tables exist in the schema but carry no traffic; that
-is a recorded decision, not an oversight. See [`DEFERRED.md`](../DEFERRED.md).
-
 ## Current boundaries
 
 **In:** single‑model Ollama / OpenAI‑compatible / mock runs; the full metric catalog;
@@ -179,8 +176,8 @@ copies a passing calibration digest onto a judgment artifact; without that diges
 judgment is a signal to read, never a gate.
 
 **Deferred:** object storage for raw payloads, the `evald` HTTP API, native
-Anthropic/Google adapters, durable pgvector write path with HNSW, and the unused
-judgment tables. See [`DEFERRED.md`](../DEFERRED.md) and
+Anthropic/Google adapters, and a durable pgvector write path with HNSW. See
+[`DEFERRED.md`](../DEFERRED.md) and
 [guide.md §8.4](guide.md#84-known-gaps--deferred).
 
 ## Related

@@ -6,7 +6,6 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -178,48 +177,6 @@ class ScoreRow(Base):
         UniqueConstraint("generation_id", "metric_name", "metric_version", "metric_config_sha256"),
         Index("ix_scores_generation_id", "generation_id"),
     )
-
-
-class JudgmentRow(Base):
-    __tablename__ = "judgments"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    generation_id: Mapped[int | None] = mapped_column(ForeignKey("generations.id"))
-    compared_generation_id: Mapped[int | None] = mapped_column(ForeignKey("generations.id"))
-    judge_model_version_id: Mapped[int | None] = mapped_column(ForeignKey("model_versions.id"))
-    rubric_name: Mapped[str | None] = mapped_column(Text)
-    rubric_version: Mapped[str | None] = mapped_column(Text)
-    score: Mapped[int | None] = mapped_column(Integer)
-    preference: Mapped[str | None] = mapped_column(Text)
-    swap_position: Mapped[int | None] = mapped_column(Integer)
-    reasoning: Mapped[str | None] = mapped_column(Text)
-    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
-    cost_usd: Mapped[float | None] = mapped_column(Numeric(12, 6))
-
-
-class AnnotationRow(Base):
-    __tablename__ = "annotations"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    case_id: Mapped[int | None] = mapped_column(ForeignKey("cases.id"))
-    generation_id: Mapped[int | None] = mapped_column(ForeignKey("generations.id"))
-    annotator_id: Mapped[str] = mapped_column(Text, nullable=False)
-    label: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    adjudicated: Mapped[bool] = mapped_column(Boolean, server_default="false")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-
-class EmbeddingRow(Base):
-    __tablename__ = "embeddings"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    content_sha256: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding_model_version_id: Mapped[int] = mapped_column(
-        ForeignKey("model_versions.id"), nullable=False
-    )
-    vec: Mapped[list[float]] = mapped_column(Vector(1024), nullable=False)
-
-    __table_args__ = (UniqueConstraint("content_sha256", "embedding_model_version_id"),)
 
 
 class MetricAggregateRow(Base):

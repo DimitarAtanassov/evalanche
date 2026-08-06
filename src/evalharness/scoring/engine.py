@@ -6,7 +6,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Iterable
 
-from evalharness.core.constants import OVERALL_SLICE
+from evalharness.core.constants import OVERALL_SLICE as OVERALL_SLICE
 from evalharness.core.enums import Requirement
 from evalharness.core.models import Case, Generation, ScoreValue, ScoringContext
 from evalharness.core.protocols import Metric

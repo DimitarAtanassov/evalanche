@@ -297,7 +297,7 @@
       "task": "classification"
     }
   ],
-  "name": "phase-5-golden",
+  "name": "suite-golden",
   "ops": {
     "members": [
       {

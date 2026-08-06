@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TypedDict
+
 from evalharness.config import get_settings
 from evalharness.core.protocols import Provider
 from evalharness.providers.config import OllamaConfig, OpenAICompatibleConfig, ProviderConfig
@@ -13,6 +15,13 @@ from evalharness.providers.runtime import ManagedProvider
 # inventing a cap that would throttle an offline provider.
 _UNBOUNDED_RPM = 1_000_000
 _UNBOUNDED_TPM = 1_000_000_000
+
+
+class _RateLimits(TypedDict, total=False):
+    """Rate-limit keyword arguments shared by both built-in config classes."""
+
+    rpm: int
+    tpm: int
 
 
 def build_managed_provider(
@@ -29,9 +38,21 @@ def build_managed_provider(
     Names outside the two configured kinds resolve through the entry-point registry.
     """
     settings = get_settings()
+    # An unset limit is left out of the constructor call so the config class applies its
+    # own default; setting it afterwards would bypass the model's validation.
+    limits: _RateLimits = {}
+    if rpm is not None:
+        limits["rpm"] = rpm
+    if tpm is not None:
+        limits["tpm"] = tpm
+
     config: ProviderConfig
     if name == "ollama":
-        config = OllamaConfig(base_url=settings.ollama_base_url, concurrency=concurrency)
+        config = OllamaConfig(
+            base_url=settings.ollama_base_url,
+            concurrency=concurrency,
+            **limits,
+        )
     elif name == "openai_compatible":
         if (
             settings.openai_compatible_base_url is None
@@ -45,6 +66,7 @@ def build_managed_provider(
             api_key=settings.openai_compatible_api_key,
             model_revision=settings.openai_compatible_model_revision,
             concurrency=concurrency,
+            **limits,
         )
     else:
         return ManagedProvider(
@@ -53,10 +75,4 @@ def build_managed_provider(
             tpm=tpm if tpm is not None else _UNBOUNDED_TPM,
             concurrency=concurrency,
         )
-
-    overrides: dict[str, int] = {}
-    if rpm is not None:
-        overrides["rpm"] = rpm
-    if tpm is not None:
-        overrides["tpm"] = tpm
-    return create_provider(config.model_copy(update=overrides))
+    return create_provider(config)

@@ -13,3 +13,5 @@ PRIMARY_METRIC = "exact_match"
 REPORT_SCHEMA_VERSION = "2.1"
 COMPARE_SCHEMA_VERSION = "1.0"
 SUITE_SCHEMA_VERSION = "0.1"
+# Schema shared by file-primary judge, calibration, and RAG evidence artifacts.
+SUPPLEMENT_SCHEMA_VERSION = "0.1"
