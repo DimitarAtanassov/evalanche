@@ -41,27 +41,33 @@ Harness failures (a provider timing out, garbage output) are counted separately 
 
 ## What the reports look like
 
-Every run emits Altair / Vega‑Lite charts embedded in a self‑contained HTML dashboard (no CDN). The images below are those chart specs exported to PNG, not page screenshots of empty tables.
+Every run emits a self‑contained HTML dashboard (Altair / Vega‑Lite, no CDN). Open the committed artifacts in a browser, or see the rendered pages below.
 
-### Multi‑industry suite
+### Single‑run dashboard
 
-`evalctl suite build` ranks published runs on each dataset's primary metric. This leaderboard is eight live Ollama runs across QA, news, healthcare, finance, math, extraction, retrieval, and summarization:
+From the offline PoC in [`fixtures/poc/report.html`](fixtures/poc/report.html): publishability gates, KPIs, evaluation context, sampled cases, then quality / reliability / latency charts.
+
+<img src="docs/assets/report-dashboard.png" alt="Fully rendered single-run evaluation dashboard from the PoC fixture" width="900" />
+
+### Suite dashboard
+
+`evalctl suite build` folds many report artifacts into one leaderboard. This page is eight live Ollama runs across QA, news, healthcare, finance, math, extraction, retrieval, and summarization (coverage matrix, primary‑metric chart, and accessible tables):
+
+<img src="docs/assets/suite-dashboard.png" alt="Fully rendered multi-industry suite dashboard with coverage matrix and leaderboard chart" width="900" />
+
+Chart close‑ups from the same suite (primary metric and p95 latency):
 
 ![Suite leaderboard across eight synthetic industries](docs/assets/suite-leaderboard.png)
 
-p95 latency across the same members:
-
 ![Suite p95 latency by member](docs/assets/suite-latency.png)
 
-### Single‑run quality charts
+### Single‑run chart detail
 
-From the committed PoC run (`fixtures/poc/`): metric scores with 95% confidence intervals, and pass rate by slice:
+From the same PoC run: metric scores with 95% confidence intervals, pass rate by slice, outcomes, and latency percentiles:
 
 ![Metric scores with 95% CI](docs/assets/chart-metric-scores.png)
 
 ![Pass rate by slice](docs/assets/chart-slice-pass-rate.png)
-
-Reliability and speed are separate from quality:
 
 ![Generation outcomes](docs/assets/chart-outcome-breakdown.png)
 
