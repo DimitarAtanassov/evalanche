@@ -38,11 +38,12 @@ comparisons can be recomputed — all without re‑calling a model.
 
 ```mermaid
 flowchart LR
-  CLI[evalctl] --> Pipeline[pipeline.run_evaluation]
-  CLI --> Compare[compare.compare_runs]
+  CLI[evalctl] --> Wiring[wiring.AppContext<br/>composition root]
+  Wiring --> Pipeline[pipeline.run_evaluation]
+  Wiring --> Compare[compare.compare_runs]
+  Wiring --> Judge[judge]
+  Wiring --> Rag[rag]
   CLI --> Stats[statistics]
-  CLI --> Judge[judge]
-  CLI --> Rag[rag]
   CLI --> Suite[suite]
 
   Pipeline --> Loader[DatasetLoader + Validator]
@@ -85,10 +86,11 @@ flowchart LR
 | Concern | Package / file | Responsibility |
 |---------|----------------|----------------|
 | CLI surface | `evalharness/cli/` | `__init__.py` assembles the Typer app from one module per command: `power`, `score`, `calibrate`, `dataset`, `run`, `runs`, `suite`, `judge`, `rag`. `_common` holds the console/logger/JSON emitter, `_provider` the call policy and provider teardown shared by the live judge and RAG paths. Commands do argument parsing, console output, and exit codes only |
+| Composition root | `evalharness/wiring.py` | `AppContext` (frozen) plus `build_app_context()`: the only place that picks concrete collaborators (settings, provider builder, scoring‑engine factory, run store). No DI framework and no container; services declare the same pieces as optional parameters that default to the production choice, so nothing below this module imports it |
 | Run pipeline | `evalharness/pipeline/run.py` | `run_evaluation`: dataset load and validate, run row, execution, rescore, report write. Transport‑neutral, so the CLI and scripts drive the same path |
 | Comparison | `evalharness/compare/service.py` | `compare_runs`: paired comparison of two stored runs on one metric, emitting the comparison artifact |
 | Configuration | `evalharness/config.py` | `Settings` (env‑backed): DB URL, provider URLs, timeouts, retry/coverage defaults, judge/NLI capacity |
-| Core types | `evalharness/core/{models,enums,protocols}.py` | `Case`, `Generation`, `ScoreValue`, `AggregateValue`; `TaskType`/`FailureOutcome`/`ErrorClass`; the `Provider` and `Metric` protocols |
+| Core types | `evalharness/core/{models,enums,protocols,ports}.py` | `Case`, `Generation`, `ScoreValue`, `AggregateValue`; `TaskType`/`FailureOutcome`/`ErrorClass`; the `Provider` and `Metric` protocols; the `RunStore` persistence port and its session‑bound factory |
 | Shared constants | `evalharness/core/constants.py` | `OVERALL_SLICE`, `PRIMARY_METRIC`, and the published schema versions (`REPORT_SCHEMA_VERSION`, `COMPARE_SCHEMA_VERSION`, `SUITE_SCHEMA_VERSION`) |
 | Datasets | `evalharness/datasets/{loader,validator}.py` | `manifest.yaml` + `cases.jsonl` → `Case`; fail‑fast validation, holdout guard, content hashing |
 | Providers | `evalharness/providers/{ollama,openai_compatible,mock,registry,factory,runtime,config,call_policy,retry,structured_output}.py` | Adapters, entry‑point discovery, `factory.build_managed_provider` for the CLI paths, managed runtime (token buckets, concurrency, circuit breaker), bounded non‑generation calls, `Retry-After` parsing, strict JSON output contracts |
@@ -113,9 +115,16 @@ flowchart LR
 2. **`Metric` protocol** (`core/protocols.py`) — aggregation is metric‑specific; never
    assume `mean()`. A metric owns both its per‑item `score()` and its `aggregate()`.
    See [metrics.md](metrics.md).
-3. **Content addressing** — datasets, templates, and run configs are SHA‑256 hashed;
+3. **`RunStore` protocol** (`core/ports.py`) — every persistence call the pipeline,
+   executor, scoring engine, and comparison make against one session.
+   `store/repository.py:RunRepository` satisfies it structurally, so the store owns no
+   back‑edge to the port. Those callers take the store from `AppContext` rather than
+   constructing a repository, which is what makes the seam substitutable. `reporting`
+   is the deliberate exception: it also reads three definition rows straight off the
+   session, so it stays on the concrete repository until that is worth changing.
+4. **Content addressing** — datasets, templates, and run configs are SHA‑256 hashed;
    silent comparison across different hashes is forbidden. See [principles.md](principles.md).
-4. **Harness vs model failures** — distinct outcomes; harness failures are excluded
+5. **Harness vs model failures** — distinct outcomes; harness failures are excluded
    from model‑quality denominators. See [dataplane.md](dataplane.md#outcome-taxonomy).
 
 ## Versioning surface

@@ -10,7 +10,7 @@ import typer
 from evalharness.cli._common import _emit_json
 from evalharness.core.enums import FailureOutcome, TaskType
 from evalharness.core.models import Case, Generation
-from evalharness.scoring.engine import ScoringEngine
+from evalharness.wiring import build_app_context
 
 
 def score_file(
@@ -18,7 +18,7 @@ def score_file(
     metrics: str = typer.Option("exact_match", "--metrics"),
 ) -> None:
     """Score supplied outputs without inference."""
-    engine = ScoringEngine()
+    engine = build_app_context().scoring_engine()
     names = [name.strip() for name in metrics.split(",") if name.strip()]
     for index, line in enumerate(inputs.read_text(encoding="utf-8").splitlines()):
         row = json.loads(line)

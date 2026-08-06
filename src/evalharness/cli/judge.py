@@ -13,7 +13,6 @@ from evalharness.cli._provider import (
     _provider_call_policy,
     _require_live_scoring_provider,
 )
-from evalharness.config import get_settings
 from evalharness.judge import (
     JudgeError,
     attach_calibration,
@@ -23,7 +22,7 @@ from evalharness.judge import (
 )
 from evalharness.judge.models import JudgeMode, JudgmentArtifact
 from evalharness.observability import exception_summary, setup_logging
-from evalharness.providers.factory import build_managed_provider
+from evalharness.wiring import AppContext, build_app_context
 
 judge_app = typer.Typer(no_args_is_help=True)
 
@@ -86,6 +85,7 @@ def judge_run(
                     output=output,
                     concurrency=concurrency,
                     request_timeout_s=request_timeout_s,
+                    context=build_app_context(),
                 )
             )
     except (JudgeError, ValueError) as exc:
@@ -124,10 +124,11 @@ async def _judge_run_live_async(
     output: Path,
     concurrency: int,
     request_timeout_s: float | None,
+    context: AppContext,
 ) -> JudgmentArtifact:
     _require_live_scoring_provider(provider_name)
-    settings = get_settings()
-    provider = build_managed_provider(
+    settings = context.settings
+    provider = context.build_provider(
         provider_name,
         concurrency=concurrency,
         rpm=settings.judge_provider_rpm,
@@ -146,7 +147,7 @@ async def _judge_run_live_async(
             seed=seed,
             output_path=output,
             concurrency=concurrency,
-            policy=_provider_call_policy(request_timeout_s),
+            policy=_provider_call_policy(settings, request_timeout_s),
         )
     finally:
         await _close_provider(provider)

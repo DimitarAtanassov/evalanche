@@ -14,10 +14,9 @@ from evalharness.cli._provider import (
     _provider_call_policy,
     _require_live_scoring_provider,
 )
-from evalharness.config import get_settings
 from evalharness.observability import exception_summary, setup_logging
-from evalharness.providers.factory import build_managed_provider
 from evalharness.rag import RagError, build_live_rag_evidence, build_rag_evidence
+from evalharness.wiring import AppContext, build_app_context
 
 rag_app = typer.Typer(no_args_is_help=True)
 
@@ -67,6 +66,7 @@ def rag_evidence(
                     nli_model=nli_model,
                     concurrency=concurrency,
                     request_timeout_s=request_timeout_s,
+                    context=build_app_context(),
                 )
             )
     except (RagError, ValueError) as exc:
@@ -100,10 +100,11 @@ async def _rag_evidence_live_async(
     nli_model: str,
     concurrency: int,
     request_timeout_s: float | None,
+    context: AppContext,
 ) -> dict[str, Any]:
     _require_live_scoring_provider(provider_name)
-    settings = get_settings()
-    provider = build_managed_provider(
+    settings = context.settings
+    provider = context.build_provider(
         provider_name,
         concurrency=concurrency,
         rpm=settings.nli_provider_rpm,
@@ -117,7 +118,7 @@ async def _rag_evidence_live_async(
             provider=provider,
             nli_model=nli_model,
             concurrency=concurrency,
-            policy=_provider_call_policy(request_timeout_s),
+            policy=_provider_call_policy(settings, request_timeout_s),
         )
     finally:
         await _close_provider(provider)

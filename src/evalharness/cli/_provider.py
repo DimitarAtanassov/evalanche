@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from evalharness.config import get_settings
+from evalharness.config import Settings
 from evalharness.core.protocols import Provider
 from evalharness.providers.call_policy import ProviderCallPolicy
 
@@ -21,8 +21,9 @@ def _require_live_scoring_provider(provider_name: str) -> None:
         )
 
 
-def _provider_call_policy(request_timeout_s: float | None) -> ProviderCallPolicy:
-    settings = get_settings()
+def _provider_call_policy(
+    settings: Settings, request_timeout_s: float | None
+) -> ProviderCallPolicy:
     return ProviderCallPolicy(
         request_timeout_s=request_timeout_s or settings.default_request_timeout_s,
         max_retries=settings.default_max_retries,

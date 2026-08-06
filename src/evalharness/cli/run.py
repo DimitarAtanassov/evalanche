@@ -13,6 +13,7 @@ from rich.table import Table
 from evalharness.cli._common import console
 from evalharness.cli_progress import PipelineProgress
 from evalharness.pipeline import DatasetValidationError, ResumeError, RunResult, run_evaluation
+from evalharness.wiring import build_app_context
 
 
 def run_eval(
@@ -32,6 +33,7 @@ def run_eval(
     tenant_id: str = typer.Option("default", "--tenant"),
 ) -> None:
     """Run evaluation against a dataset."""
+    context = build_app_context()
     try:
         with ExitStack() as display:
             pipeline_progress = PipelineProgress(console)
@@ -61,6 +63,10 @@ def run_eval(
                     tenant_id=tenant_id,
                     progress=pipeline_progress,
                     on_run_started=announce_run,
+                    settings=context.settings,
+                    build_provider=context.build_provider,
+                    scoring_engine=context.scoring_engine,
+                    run_store=context.run_store,
                 )
             )
     except DatasetValidationError as exc:

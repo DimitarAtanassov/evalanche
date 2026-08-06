@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import select
 
 from evalharness.core.constants import COMPARE_SCHEMA_VERSION
+from evalharness.core.ports import RunStoreFactory
 from evalharness.statistics import apply_multiplicity, compare_binary
 from evalharness.store.db import session_scope
 from evalharness.store.models import CaseRow, GenerationRow, ScoreRow
@@ -19,6 +20,8 @@ async def compare_runs(
     candidate_id: uuid.UUID,
     metric: str,
     allow_compatible: bool,
+    *,
+    run_store: RunStoreFactory | None = None,
 ) -> dict[str, Any]:
     """Compare aligned case/repeat outcomes of two runs.
 
@@ -26,9 +29,13 @@ async def compare_runs(
     ``allow_compatible`` relaxes that to a deliberate same-dataset, same-repeats
     comparison. Cases whose repeats disagree in either arm are flaky and are excluded
     from the paired test rather than counted as evidence.
+
+    ``run_store`` comes from the composition root and defaults to the production store.
+    The paired outcome join stays on the session: it spans three tables for one read and
+    is not worth a repository method that only this caller would use.
     """
     async with session_scope() as session:
-        repo = RunRepository(session)
+        repo = (run_store or RunRepository)(session)
         baseline_run = await repo.get_run(baseline_id)
         candidate_run = await repo.get_run(candidate_id)
         if baseline_run is None or candidate_run is None:

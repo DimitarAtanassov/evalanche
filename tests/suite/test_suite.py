@@ -17,6 +17,7 @@ import yaml
 from typer.testing import CliRunner
 
 import evalharness.compare.service as compare_service
+import evalharness.wiring as wiring
 from evalharness.charts import script_json
 from evalharness.cli import app
 from evalharness.judge import attach_calibration, run_judgment, validate_calibration
@@ -531,7 +532,8 @@ def test_runs_compare_artifact_validates_and_round_trips_through_suite_build(
     async def fake_session_scope() -> AsyncIterator[FakeSession]:
         yield FakeSession()
 
-    monkeypatch.setattr(compare_service, "RunRepository", FakeRepository)
+    # The CLI takes its store from the composition root, so that is where it is swapped.
+    monkeypatch.setattr(wiring, "RunRepository", FakeRepository)
     monkeypatch.setattr(compare_service, "session_scope", fake_session_scope)
     # Suite artifacts must live under the manifest directory; see the containment test.
     compare_path = mutable_suite.parent / "produced-compare.json"
@@ -608,7 +610,7 @@ def test_runs_compare_reports_no_effect_when_both_arms_are_identical(
     async def fake_session_scope() -> AsyncIterator[FakeSession]:
         yield FakeSession()
 
-    monkeypatch.setattr(compare_service, "RunRepository", FakeRepository)
+    monkeypatch.setattr(wiring, "RunRepository", FakeRepository)
     monkeypatch.setattr(compare_service, "session_scope", fake_session_scope)
     output = tmp_path / "identical-compare.json"
 

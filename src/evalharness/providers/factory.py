@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import Protocol, TypedDict
 
 from evalharness.config import get_settings
 from evalharness.core.protocols import Provider
@@ -22,6 +22,19 @@ class _RateLimits(TypedDict, total=False):
 
     rpm: int
     tpm: int
+
+
+class ProviderBuilder(Protocol):
+    """The shape of ``build_managed_provider``, so the composition root can hand it out."""
+
+    def __call__(
+        self,
+        name: str,
+        *,
+        concurrency: int,
+        rpm: int | None = None,
+        tpm: int | None = None,
+    ) -> Provider: ...
 
 
 def build_managed_provider(

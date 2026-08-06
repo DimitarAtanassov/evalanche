@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from evalharness.core.constants import OVERALL_SLICE as OVERALL_SLICE
 from evalharness.core.enums import Requirement
 from evalharness.core.models import Case, Generation, ScoreValue, ScoringContext
+from evalharness.core.ports import RunStoreFactory
 from evalharness.core.protocols import Metric
 from evalharness.observability import (
     PipelineStage,
@@ -39,11 +40,14 @@ class ScoringEngine:
         registry: MetricRegistry | None = None,
         batch_size: int = 500,
         max_slice_cardinality: int = 50,
+        *,
+        run_store: RunStoreFactory | None = None,
     ) -> None:
         self.registry = registry or MetricRegistry.defaults()
         self.batch_size = batch_size
         self.max_slice_cardinality = max_slice_cardinality
         self.normalizer = Normalizer(NormalizerConfig())
+        self.run_store: RunStoreFactory = run_store or RunRepository
 
     def rollup_dimensions(self, cases: Iterable[Case]) -> set[str]:
         """Slice dimensions worth rolling up.
@@ -98,7 +102,7 @@ class ScoringEngine:
         grouped: dict[tuple[str, str], list[ScoreValue]] = defaultdict(list)
         with log_context(run_id=str(run_id), metrics=metric_names):
             async with session_scope() as session:
-                repo = RunRepository(session)
+                repo = self.run_store(session)
                 run = await repo.get_run(run_id)
                 if run is None:
                     raise ValueError(f"Run not found: {run_id}")
@@ -230,3 +234,7 @@ class ScoringEngine:
                 duration_ms=timer.elapsed_ms,
             )
         return saved
+
+
+type ScoringEngineFactory = Callable[[], ScoringEngine]
+"""Produces an engine already bound to its store, so callers never wire one themselves."""

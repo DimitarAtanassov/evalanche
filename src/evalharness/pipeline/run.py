@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from evalharness.config import get_settings
+from evalharness.config import Settings, get_settings
+from evalharness.core.ports import RunStoreFactory
 from evalharness.datasets import dataset_upsert_fields, load_dataset, validate_dataset
 from evalharness.execution.executor import Executor
 from evalharness.hashing import config_hash, sha256_hex
@@ -20,9 +21,9 @@ from evalharness.observability import (
     setup_logging,
     setup_otel,
 )
-from evalharness.providers.factory import build_managed_provider
+from evalharness.providers.factory import ProviderBuilder, build_managed_provider
 from evalharness.reporting.report import PRIMARY_METRIC, RunReport, write_report
-from evalharness.scoring.engine import ScoringEngine
+from evalharness.scoring.engine import ScoringEngine, ScoringEngineFactory
 from evalharness.store.db import init_db, session_scope
 from evalharness.store.repository import RunRepository
 
@@ -42,6 +43,16 @@ class DatasetValidationError(Exception):
 
 class ResumeError(Exception):
     """The requested run cannot be resumed with the supplied inputs."""
+
+
+def resolve_run_store_and_scoring_engine(
+    run_store: RunStoreFactory | None,
+    scoring_engine: ScoringEngineFactory | None,
+) -> tuple[RunStoreFactory, ScoringEngineFactory]:
+    """Bind the default scoring engine to the same store the executor will use."""
+    store = run_store or RunRepository
+    make_engine = scoring_engine or (lambda: ScoringEngine(run_store=store))
+    return store, make_engine
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,17 +81,29 @@ async def run_evaluation(
     tenant_id: str,
     progress: ProgressCallback | None = None,
     on_run_started: RunStartedCallback | None = None,
+    settings: Settings | None = None,
+    build_provider: ProviderBuilder | None = None,
+    scoring_engine: ScoringEngineFactory | None = None,
+    run_store: RunStoreFactory | None = None,
 ) -> RunResult:
     """Validate, execute, score, and report one evaluation run.
 
     Raises ``DatasetValidationError`` when the dataset is unfit and ``ResumeError`` when
     ``resume`` names an unknown run or one built from different inputs. Publishability is
     reported, not enforced: the caller decides what an unpublishable report means.
+
+    The trailing collaborators come from the composition root (``wiring.AppContext``).
+    Each falls back to the production choice so a direct caller needs none of them.
     """
     setup_logging()
     setup_otel()
     pipeline_timer = StageTimer()
-    settings = get_settings()
+    settings = settings or get_settings()
+    build_provider = build_provider or build_managed_provider
+    # The store is resolved first so a defaulted engine scores through the same store the
+    # executor wrote to. Defaulting the two independently would let generations land in an
+    # injected store while the rescore read and wrote the production one.
+    store, make_scoring_engine = resolve_run_store_and_scoring_engine(run_store, scoring_engine)
     await init_db()
 
     logger.info("dataset_validation_started", dataset_path=str(dataset_dir))
@@ -111,7 +134,7 @@ async def run_evaluation(
         "stop": [],
     }
 
-    prov = build_managed_provider(provider, concurrency=concurrency)
+    prov = build_provider(provider, concurrency=concurrency)
     logger.info("provider_resolution_started", provider=provider, model=model)
     model_version = await prov.resolve_version(model)
     logger.info(
@@ -130,7 +153,7 @@ async def run_evaluation(
         concurrency=concurrency,
     )
     async with session_scope() as session:
-        repo = RunRepository(session)
+        repo = store(session)
         dataset_id = await repo.upsert_dataset(**dataset_upsert_fields(bundle))
         prompt_template_id = await repo.upsert_prompt_template(
             name=f"{bundle.manifest.name}-{template.stem}",
@@ -182,6 +205,8 @@ async def run_evaluation(
         model=model,
         model_version=model_version,
         template_body=template_body,
+        settings=settings,
+        run_store=store,
     )
 
     if resume:
@@ -214,7 +239,7 @@ async def run_evaluation(
     metric_names = list(bundle.manifest.task_metrics or [PRIMARY_METRIC])
     try:
         await executor.execute_run(run_id, concurrency=concurrency, progress=progress)
-        await ScoringEngine().rescore_run(
+        await make_scoring_engine().rescore_run(
             run_id,
             metric_names,
             progress=progress,

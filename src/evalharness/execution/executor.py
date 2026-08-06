@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 from jinja2 import Environment
 
-from evalharness.config import get_settings
+from evalharness.config import Settings, get_settings
 from evalharness.core.enums import ErrorClass, FailureOutcome, FinishReason
 from evalharness.core.models import (
     Case,
@@ -24,6 +24,7 @@ from evalharness.core.models import (
     ModelVersion,
     ToolCall,
 )
+from evalharness.core.ports import RunStoreFactory
 from evalharness.core.protocols import Provider
 from evalharness.hashing import config_hash, sha256_canonical
 from evalharness.observability import (
@@ -190,12 +191,16 @@ class Executor:
         model: str,
         model_version: ModelVersion,
         template_body: str,
+        *,
+        settings: Settings | None = None,
+        run_store: RunStoreFactory | None = None,
     ) -> None:
         self.provider = provider
         self.model = model
         self.model_version = model_version
         self.template_body = template_body
-        self.settings = get_settings()
+        self.settings = settings or get_settings()
+        self.run_store: RunStoreFactory = run_store or RunRepository
         self.tracer = get_tracer()
         self.shutdown = GracefulShutdown()
 
@@ -222,7 +227,7 @@ class Executor:
             harness_version=self.settings.harness_version,
         )
         async with session_scope() as session:
-            repo = RunRepository(session)
+            repo = self.run_store(session)
             rid = await repo.create_run(
                 dataset_id=bundle_dataset_id,
                 prompt_template_id=prompt_template_id,
@@ -250,7 +255,7 @@ class Executor:
 
     async def plan(self, run_id: uuid.UUID) -> tuple[RunConfig, list[RunPlanItem]]:
         async with session_scope() as session:
-            repo = RunRepository(session)
+            repo = self.run_store(session)
             run = await repo.get_run(run_id)
             if not run:
                 raise ValueError(f"Run not found: {run_id}")
@@ -293,7 +298,7 @@ class Executor:
     ) -> None:
         """Refuse a resume when any generation-affecting input changed."""
         async with session_scope() as session:
-            run = await RunRepository(session).get_run(run_id)
+            run = await self.run_store(session).get_run(run_id)
             if run is None:
                 raise ValueError(f"Run not found: {run_id}")
             expected = {
@@ -380,7 +385,7 @@ class Executor:
                 await asyncio.gather(shutdown_wait, return_exceptions=True)
 
         async with session_scope() as session:
-            repo = RunRepository(session)
+            repo = self.run_store(session)
             remaining = len((await self.plan(run_id))[1])
             if remaining == 0 and not worker_failures:
                 status = "completed"
@@ -547,7 +552,7 @@ class Executor:
         reason: str,
     ) -> ExecutionResult:
         async with session_scope() as session:
-            await RunRepository(session).save_generation(
+            await self.run_store(session).save_generation(
                 run_id=run_id,
                 case_id=item.case_db_id,
                 repeat_idx=item.repeat_idx,
@@ -665,7 +670,7 @@ class Executor:
 
     async def _load_cached_response(self, cache_key: str) -> GenerationResponse | None:
         async with session_scope() as session:
-            cached_payload = await RunRepository(session).get_cache(cache_key)
+            cached_payload = await self.run_store(session).get_cache(cache_key)
         if not cached_payload:
             return None
         logger.debug("cache_hit", cache_key=cache_key)
@@ -673,7 +678,7 @@ class Executor:
 
     async def _put_cached_response(self, cache_key: str, response: GenerationResponse) -> None:
         async with session_scope() as session:
-            await RunRepository(session).put_cache(
+            await self.run_store(session).put_cache(
                 cache_key,
                 {
                     "text": response.text,
@@ -829,7 +834,7 @@ class Executor:
         trace_id: str,
     ) -> None:
         async with session_scope() as session:
-            await RunRepository(session).save_generation(
+            await self.run_store(session).save_generation(
                 run_id=run_id,
                 case_id=item.case_db_id,
                 repeat_idx=item.repeat_idx,
