@@ -179,8 +179,12 @@ async def main() -> None:
     }
     existing = await latest_runs()
     if len(existing) < 2:
-        await _run_async(template=baseline_template, **common)
-        await _run_async(template=candidate_template, **common)
+        for template in (baseline_template, candidate_template):
+            result = await _run_async(template=template, **common)
+            # The pipeline reports publishability; only the CLI aborts on it. Evidence
+            # must never be assembled from a run that failed the coverage floor.
+            if not result.report.publishable:
+                raise SystemExit(f"Run {result.run_id} is not publishable")
         existing = await latest_runs()
     baseline_run, candidate_run = existing
 

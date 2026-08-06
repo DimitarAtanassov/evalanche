@@ -33,6 +33,7 @@ try:
 except ImportError:  # pragma: no cover - optional path when nltk is unavailable
     _meteor_score = None
 
+from evalharness.core.constants import OVERALL_SLICE
 from evalharness.core.enums import Requirement, TaskType
 from evalharness.core.models import AggregateValue, Case, Generation, ScoreValue, ScoringContext
 from evalharness.hashing import sha256_canonical
@@ -86,7 +87,7 @@ class ScalarMetric:
         return AggregateValue(
             self.name,
             self.version,
-            "__overall__",
+            OVERALL_SLICE,
             len(valid),
             mean,
             low,
@@ -284,7 +285,7 @@ class ClassificationMetric(ScalarMetric):
         return AggregateValue(
             self.name,
             self.version,
-            "__overall__",
+            OVERALL_SLICE,
             len(expected),
             accuracy,
             low,
@@ -445,7 +446,7 @@ class BleuMetric(ScalarMetric):
         return AggregateValue(
             self.name,
             self.version,
-            "__overall__",
+            OVERALL_SLICE,
             len(valid),
             (score.score / 100) if score else 0.0,
             None,

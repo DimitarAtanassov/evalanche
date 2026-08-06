@@ -41,7 +41,9 @@ def test_versioned_manifest_rejects_missing_source(tmp_path: Path) -> None:
     dataset = copy_dataset(SMOKE_ROOT / "synthetic-qa-smoke", tmp_path / "missing-source")
     rewrite_manifest(dataset, source=DELETE)
 
-    with pytest.raises(DatasetManifestError, match="Missing Phase 4 manifest keys: source"):
+    with pytest.raises(
+        DatasetManifestError, match="Missing manifest keys for schema_version 0.1: source"
+    ):
         load_dataset(dataset)
 
 
@@ -49,7 +51,9 @@ def test_versioned_manifest_rejects_missing_adapter(tmp_path: Path) -> None:
     dataset = copy_dataset(SMOKE_ROOT / "synthetic-qa-smoke", tmp_path / "missing-adapter")
     rewrite_manifest(dataset, adapter=DELETE)
 
-    with pytest.raises(DatasetManifestError, match="Missing Phase 4 manifest keys: adapter"):
+    with pytest.raises(
+        DatasetManifestError, match="Missing manifest keys for schema_version 0.1: adapter"
+    ):
         load_dataset(dataset)
 
 

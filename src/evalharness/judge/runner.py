@@ -235,8 +235,8 @@ def run_judgment(
     if provider != "mock":
         raise JudgeError(
             "PROVIDER_UNSUPPORTED",
-            "Phase 6 CI path supports --provider mock only; "
-            "live providers are deferred until structured judge parsing ships",
+            "the deterministic judgment path supports --provider mock only; "
+            "a live provider routes through run_live_judgment",
         )
     if responses_path is None:
         raise JudgeError("MISSING_ARTIFACT", "--responses is required when --provider mock")

@@ -14,6 +14,7 @@ from evalharness.statistics.core import (
     find_flaky_cases,
     paired_bootstrap,
     pass_at_k,
+    percentile,
     required_sample_size,
     wilson_interval,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "find_flaky_cases",
     "paired_bootstrap",
     "pass_at_k",
+    "percentile",
     "required_sample_size",
     "wilson_interval",
 ]

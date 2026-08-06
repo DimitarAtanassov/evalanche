@@ -35,8 +35,13 @@ print(MetricRegistry.defaults().names())"
 ```
 
 `MetricRegistry.defaults()` registers `exact_match` plus the full catalog from
-`scoring/catalog.py`; entry points under `evalharness.metrics` add more (today
-`bertscore`). `evalctl run` scores `exact_match` by default — reach for the rest via
+`scoring/catalog.py`. That is how every built‑in metric is registered; a built‑in never
+goes through an entry point. The `evalharness.metrics` entry‑point group is reserved for
+optional external extras that ship behind their own dependency group, today only
+`bertscore` behind `metrics-ml`. `MetricRegistry.discover()` loads an entry point with no
+arguments, so an entry‑point metric must be constructible without injected collaborators
+(`exact_match` needs a `Normalizer`, which is why it lives in `defaults()`).
+`evalctl run` scores `exact_match` by default; reach for the rest via
 `evalctl runs rescore --metrics …`.
 
 ## The families and when to use them

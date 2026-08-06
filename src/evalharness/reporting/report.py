@@ -11,14 +11,28 @@ import uuid
 import xml.etree.ElementTree as ET
 from collections import Counter
 from dataclasses import asdict, dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
 
 import altair as alt
-import vl_convert
 from jinja2 import Environment, PackageLoader, select_autoescape
 
+from evalharness.charts import (
+    ACCENT,
+    FONT,
+    LINE,
+    MUTED,
+    chart_data,
+    render_chart,
+    vega_runtime,
+)
+from evalharness.core.constants import (
+    OVERALL_SLICE,
+    REPORT_SCHEMA_VERSION,
+)
+from evalharness.core.constants import (
+    PRIMARY_METRIC as PRIMARY_METRIC,  # re-exported: callers import the default from here
+)
 from evalharness.core.enums import FailureOutcome
 from evalharness.core.models import Case
 from evalharness.observability import (
@@ -30,15 +44,13 @@ from evalharness.observability import (
     get_logger,
     log_context,
 )
-from evalharness.scoring.engine import OVERALL_SLICE
 from evalharness.scoring.registry import MetricRegistry
-from evalharness.statistics import wilson_interval
+from evalharness.statistics import percentile, wilson_interval
 from evalharness.store.db import session_scope
 from evalharness.store.models import DatasetRow, ModelVersionRow, PromptTemplateRow
 from evalharness.store.repository import RunRepository
 
-SCHEMA_VERSION = "2.1"
-PRIMARY_METRIC = "exact_match"
+SCHEMA_VERSION = REPORT_SCHEMA_VERSION
 HARNESS_OUTCOMES = {FailureOutcome.HARNESS_ERROR.value, FailureOutcome.HARNESS_TIMEOUT.value}
 EXAMPLE_LIMIT = 8
 EXAMPLE_TEXT_LIMIT = 280
@@ -55,14 +67,9 @@ LATENCY_CHART_DIV_ID = "chart-latency-percentiles"
 LATENCY_PERCENTILES = ("p50", "p90", "p95", "p99", "max")
 
 INK = "#111820"
-MUTED = "#5b6675"
-LINE = "#e4e8ee"
-ACCENT = "#2f5bd7"
 BAD = "#b42318"
 WARN = "#b25e09"
-FONT = "system-ui,-apple-system,'Segoe UI',sans-serif"
 
-_EMBED_OPTIONS = {"actions": False, "renderer": "svg"}
 _CHART_THEME: dict[str, Any] = {
     "font": FONT,
     "background": "transparent",
@@ -133,16 +140,6 @@ class RunReport:
     cache_hits: int
     cache_rate: float
     trace_ids_sample: list[str]
-
-
-def _percentile(values: list[float], q: float) -> float:
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    position = (len(ordered) - 1) * q
-    lower = int(position)
-    upper = min(lower + 1, len(ordered) - 1)
-    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
 
 
 def _truncate(value: str | None, limit: int = EXAMPLE_TEXT_LIMIT) -> str | None:
@@ -410,10 +407,10 @@ def assemble_run_report(
     latency = {
         key: round(value, 2)
         for key, value in {
-            "p50": _percentile(latencies, 0.50),
-            "p90": _percentile(latencies, 0.90),
-            "p95": _percentile(latencies, 0.95),
-            "p99": _percentile(latencies, 0.99),
+            "p50": percentile(latencies, 0.50),
+            "p90": percentile(latencies, 0.90),
+            "p95": percentile(latencies, 0.95),
+            "p99": percentile(latencies, 0.99),
             "max": max(latencies) if latencies else 0.0,
             "mean": sum(latencies) / len(latencies) if latencies else 0.0,
         }.items()
@@ -585,41 +582,9 @@ def slice_aggregates(report: RunReport) -> list[dict[str, Any]]:
     return sorted(rows, key=lambda row: (row["value"], row["slice"]))
 
 
-@lru_cache(maxsize=1)
-def _vega_runtime() -> str:
-    """Vega + Vega-Lite + Vega-Embed with no external references.
-
-    Emitted once per document so a report with four charts still carries one copy.
-    """
-    # The stub marks ``snippet`` required; omitting it selects vl-convert's default
-    # snippet, which is what binds vegaEmbed/vegaLite/vega onto window.
-    return vl_convert.javascript_bundle()  # type: ignore[call-arg]
-
-
-def _data(rows: list[dict[str, Any]]) -> alt.Data:
-    """Inline chart data. Altair ships untyped constructors, so the boundary is here."""
-    return alt.Data(values=rows)  # type: ignore[no-untyped-call]
-
-
 def _labels(rows: list[dict[str, Any]], field: str) -> list[str]:
     """Category order for an axis, as the string sequence altair's ``sort`` expects."""
     return [str(row[field]) for row in rows]
-
-
-def _render_chart(chart: alt.Chart | None, div_id: str) -> str:
-    """Serialize one chart to a div plus its embed call.
-
-    The div id is supplied by the caller rather than left to Altair, which otherwise
-    emits a random ``altair-viz-<uuid>`` and makes the report non-reproducible.
-    """
-    if chart is None:
-        return ""
-    spec = json.dumps(chart.configure(**_CHART_THEME).to_dict(), sort_keys=True)
-    options = json.dumps(_EMBED_OPTIONS, sort_keys=True)
-    return (
-        f'<div id="{div_id}" class="chart"></div>\n'
-        f'<script>vegaEmbed("#{div_id}", {spec}, {options});</script>'
-    )
 
 
 def _metric_figure(report: RunReport) -> alt.Chart | None:
@@ -637,7 +602,7 @@ def _metric_figure(report: RunReport) -> alt.Chart | None:
         return None
     axis = alt.Y("metric:N", sort=_labels(rows, "metric"), title=None)
     bars = (
-        alt.Chart(_data(rows))
+        alt.Chart(chart_data(rows))
         .mark_bar(height=16)
         .encode(
             x=alt.X(
@@ -657,7 +622,7 @@ def _metric_figure(report: RunReport) -> alt.Chart | None:
         )
     )
     whiskers = (
-        alt.Chart(_data(rows))
+        alt.Chart(chart_data(rows))
         .mark_rule(color=INK, strokeWidth=1.2)
         .encode(x=alt.X("low:Q", title=""), x2="high:Q", y=axis)
     )
@@ -688,7 +653,7 @@ def _slice_figure(report: RunReport) -> alt.Chart | None:
         axis=alt.Axis(labelAngle=0),
     )
     bars = (
-        alt.Chart(_data(rows))
+        alt.Chart(chart_data(rows))
         .mark_bar(size=40)
         .encode(
             x=axis,
@@ -719,12 +684,12 @@ def _slice_figure(report: RunReport) -> alt.Chart | None:
         )
     )
     whiskers = (
-        alt.Chart(_data(rows))
+        alt.Chart(chart_data(rows))
         .mark_rule(color=INK, strokeWidth=1.2)
         .encode(x=axis, y=alt.Y("low:Q", title=""), y2="high:Q")
     )
     overall = (
-        alt.Chart(_data([{"overall": report.pass_rate * 100}]))
+        alt.Chart(chart_data([{"overall": report.pass_rate * 100}]))
         .mark_rule(color=MUTED, strokeDash=[3, 3])
         .encode(y=alt.Y("overall:Q", title=""))
         if report.pass_rate is not None
@@ -775,7 +740,7 @@ def _outcome_figure(report: RunReport) -> alt.Chart | None:
         "Harness failure (excluded)": MUTED,
     }
     chart = (
-        alt.Chart(_data(rows))
+        alt.Chart(chart_data(rows))
         .mark_bar(size=48)
         .encode(
             x=alt.X(
@@ -824,7 +789,7 @@ def _latency_figure(report: RunReport) -> alt.Chart | None:
         axis=alt.Axis(labelAngle=0),
     )
     bars = (
-        alt.Chart(_data(rows))
+        alt.Chart(chart_data(rows))
         .mark_bar(size=34)
         .encode(
             x=axis,
@@ -840,7 +805,7 @@ def _latency_figure(report: RunReport) -> alt.Chart | None:
         )
     )
     labels = (
-        alt.Chart(_data(rows))
+        alt.Chart(chart_data(rows))
         .mark_text(dy=-8, fontSize=11, color=MUTED)
         .encode(x=axis, y="ms:Q", text=alt.Text("ms:Q", format=",.0f"))
     )
@@ -871,15 +836,15 @@ def _gates(report: RunReport) -> list[dict[str, Any]]:
 
 def report_to_html(report: RunReport) -> str:
     charts = {
-        "metric": _render_chart(_metric_figure(report), METRIC_CHART_DIV_ID),
-        "slice": _render_chart(_slice_figure(report), SLICE_CHART_DIV_ID),
-        "outcome": _render_chart(_outcome_figure(report), OUTCOME_CHART_DIV_ID),
-        "latency": _render_chart(_latency_figure(report), LATENCY_CHART_DIV_ID),
+        "metric": render_chart(_metric_figure(report), METRIC_CHART_DIV_ID, theme=_CHART_THEME),
+        "slice": render_chart(_slice_figure(report), SLICE_CHART_DIV_ID, theme=_CHART_THEME),
+        "outcome": render_chart(_outcome_figure(report), OUTCOME_CHART_DIV_ID, theme=_CHART_THEME),
+        "latency": render_chart(_latency_figure(report), LATENCY_CHART_DIV_ID, theme=_CHART_THEME),
     }
     rendered = _templates.get_template("report_v1.html.j2").render(
         report=report_to_json(report),
         charts=charts,
-        runtime=_vega_runtime(),
+        runtime=vega_runtime(),
         gates=_gates(report),
         overall_aggregates=overall_aggregates(report),
         slice_aggregates=slice_aggregates(report),

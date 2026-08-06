@@ -6,7 +6,6 @@ import asyncio
 import random
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
 
 import httpx
 
@@ -14,6 +13,7 @@ from evalharness.core.enums import ErrorClass
 from evalharness.core.models import GenerationRequest, GenerationResponse, ModelVersion
 from evalharness.core.protocols import Provider
 from evalharness.observability import StageTimer, exception_summary, get_logger
+from evalharness.providers.retry import retry_after_seconds
 
 logger = get_logger(__name__)
 
@@ -42,23 +42,6 @@ class ProviderCallError(RuntimeError):
     def __init__(self, message: str, *, attempts: int) -> None:
         self.attempts = attempts
         super().__init__(message)
-
-
-def _retry_after_seconds(exc: Exception) -> float | None:
-    response = getattr(exc, "response", None)
-    if response is None:
-        return None
-    value = response.headers.get("Retry-After")
-    if value is None:
-        return None
-    try:
-        return max(0.0, float(value))
-    except ValueError:
-        try:
-            retry_at = datetime.strptime(value, "%a, %d %b %Y %H:%M:%S GMT").replace(tzinfo=UTC)
-        except ValueError:
-            return None
-        return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
 
 
 async def _call_with_policy[ResultT](
@@ -114,7 +97,7 @@ async def _call_with_policy[ResultT](
                 ) from exc
             exponential_cap = min(policy.retry_cap_s, policy.retry_base_s * (2**attempt))
             jitter = random.uniform(0.0, exponential_cap)
-            delay = max(jitter, _retry_after_seconds(exc) or 0.0)
+            delay = max(jitter, retry_after_seconds(exc) or 0.0)
             logger.warning(
                 "provider_retry_scheduled",
                 **call,

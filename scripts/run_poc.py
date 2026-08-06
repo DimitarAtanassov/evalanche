@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from evalharness.config import get_settings
 from evalharness.core.models import ModelVersion
-from evalharness.datasets import load_dataset, validate_dataset
+from evalharness.datasets import dataset_upsert_fields, load_dataset, validate_dataset
 from evalharness.datasets.loader import DatasetBundle
 from evalharness.execution.executor import Executor, render_prompt, response_cache_key
 from evalharness.hashing import sha256_hex
@@ -110,7 +110,7 @@ async def run_poc(*, output_dir: Path) -> Path:
             decode_params=decode_params,
         )
         repo = RunRepository(session)
-        dataset_id = await repo.upsert_dataset(bundle)
+        dataset_id = await repo.upsert_dataset(**dataset_upsert_fields(bundle))
         prompt_template_id = await repo.upsert_prompt_template(
             name="poc-qa-template",
             version="1.0.0",

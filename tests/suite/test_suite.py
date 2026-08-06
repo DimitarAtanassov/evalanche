@@ -16,7 +16,8 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-import evalharness.cli as cli_module
+import evalharness.compare.service as compare_service
+from evalharness.charts import script_json
 from evalharness.cli import app
 from evalharness.judge import attach_calibration, run_judgment, validate_calibration
 from evalharness.judge.models import JudgeMode
@@ -33,7 +34,6 @@ from evalharness.suite.render import (
     LATENCY_CHART_DIV_ID,
     LEADERBOARD_CHART_DIV_ID,
     SLICE_CHART_DIV_ID,
-    _script_json,
 )
 
 ROOT = Path(__file__).parents[2]
@@ -531,8 +531,8 @@ def test_runs_compare_artifact_validates_and_round_trips_through_suite_build(
     async def fake_session_scope() -> AsyncIterator[FakeSession]:
         yield FakeSession()
 
-    monkeypatch.setattr(cli_module, "RunRepository", FakeRepository)
-    monkeypatch.setattr(cli_module, "session_scope", fake_session_scope)
+    monkeypatch.setattr(compare_service, "RunRepository", FakeRepository)
+    monkeypatch.setattr(compare_service, "session_scope", fake_session_scope)
     # Suite artifacts must live under the manifest directory; see the containment test.
     compare_path = mutable_suite.parent / "produced-compare.json"
 
@@ -608,8 +608,8 @@ def test_runs_compare_reports_no_effect_when_both_arms_are_identical(
     async def fake_session_scope() -> AsyncIterator[FakeSession]:
         yield FakeSession()
 
-    monkeypatch.setattr(cli_module, "RunRepository", FakeRepository)
-    monkeypatch.setattr(cli_module, "session_scope", fake_session_scope)
+    monkeypatch.setattr(compare_service, "RunRepository", FakeRepository)
+    monkeypatch.setattr(compare_service, "session_scope", fake_session_scope)
     output = tmp_path / "identical-compare.json"
 
     result = CLI.invoke(
@@ -1100,7 +1100,7 @@ def test_judgment_without_calibration_digest_cannot_light_suite_badge(
 def test_script_json_escapes_script_terminator_and_js_line_separators() -> None:
     payload = {"label": "</script><script>alert(1)</script>\u2028\u2029 & done"}
 
-    encoded = _script_json(payload)
+    encoded = script_json(payload)
 
     assert "</script" not in encoded
     assert "\u2028" not in encoded

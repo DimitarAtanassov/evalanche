@@ -6,7 +6,7 @@ import json
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 
 import yaml
 
@@ -82,6 +82,35 @@ class DatasetBundle:
     manifest_warnings: tuple[str, ...] = ()
 
 
+class DatasetUpsertFields(TypedDict):
+    """Domain values a persistence seam needs to record a loaded dataset."""
+
+    name: str
+    version: str
+    split: str
+    content_sha256: str
+    license: str
+    pii_scrubbed: bool
+    created_at: str
+    slices: list[str]
+    cases: list[Case]
+
+
+def dataset_upsert_fields(bundle: DatasetBundle) -> DatasetUpsertFields:
+    """Flatten a bundle for storage so the store layer never sees the loader type."""
+    return {
+        "name": bundle.manifest.name,
+        "version": bundle.manifest.version,
+        "split": bundle.manifest.split,
+        "content_sha256": bundle.content_sha256,
+        "license": bundle.manifest.license,
+        "pii_scrubbed": bundle.manifest.pii_scrubbed,
+        "created_at": bundle.manifest.created_at,
+        "slices": bundle.manifest.slices,
+        "cases": bundle.cases,
+    }
+
+
 class DatasetManifestError(ValueError):
     """Raised when a dataset manifest violates its typed boundary contract."""
 
@@ -112,7 +141,7 @@ VERSIONED_MANIFEST_KEYS = LEGACY_MANIFEST_KEYS | {
     "pii_scrub_procedure",
 }
 REQUIRED_MANIFEST_KEYS = LEGACY_MANIFEST_KEYS - {"content_sha256"}
-PHASE_4_REQUIRED_KEYS = VERSIONED_MANIFEST_KEYS - {"content_sha256"}
+VERSIONED_REQUIRED_KEYS = VERSIONED_MANIFEST_KEYS - {"content_sha256"}
 
 
 TASK_REQUIRED_FIELDS: dict[TaskType, list[str]] = {
@@ -332,12 +361,12 @@ def _parse_manifest(raw_value: object) -> tuple[DatasetManifest, tuple[str, ...]
         if schema_version != "0.1":
             raise DatasetManifestError(f"Unsupported dataset schema_version: {schema_version}")
         unknown = set(raw) - VERSIONED_MANIFEST_KEYS
-        missing = PHASE_4_REQUIRED_KEYS - set(raw)
+        missing = VERSIONED_REQUIRED_KEYS - set(raw)
         if unknown:
             raise DatasetManifestError(f"UNKNOWN_MANIFEST_KEY: {', '.join(sorted(unknown))}")
         if missing:
             raise DatasetManifestError(
-                f"Missing Phase 4 manifest keys: {', '.join(sorted(missing))}"
+                f"Missing manifest keys for schema_version 0.1: {', '.join(sorted(missing))}"
             )
 
     tier_value = raw.get("tier")

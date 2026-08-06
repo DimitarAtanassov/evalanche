@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from evalharness.core.constants import REPORT_SCHEMA_VERSION
 from evalharness.core.models import GenerationRequest, GenerationResponse, Message, ModelVersion
 from evalharness.core.protocols import Provider
 from evalharness.hashing import canonical_json, sha256_hex
@@ -245,10 +246,11 @@ async def build_live_rag_evidence(
     """Build a RAG evidence artifact using live provider-backed NLI."""
 
     report = _read_json(report_path)
-    if report.get("schema_version") != "2.1":
+    if report.get("schema_version") != REPORT_SCHEMA_VERSION:
         raise RagError(
             "UNSUPPORTED_SCHEMA",
-            f"{report_path}: expected report schema 2.1, got {report.get('schema_version')!r}",
+            f"{report_path}: expected report schema {REPORT_SCHEMA_VERSION}, "
+            f"got {report.get('schema_version')!r}",
         )
     cases = _load_evidence(evidence_path)
     live = await run_live_nli(

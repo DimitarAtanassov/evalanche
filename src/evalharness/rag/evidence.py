@@ -8,6 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from evalharness.core.constants import OVERALL_SLICE, REPORT_SCHEMA_VERSION
 from evalharness.hashing import canonical_json, sha256_hex
 from evalharness.observability import get_logger
 from evalharness.rag.citations import citation_attribution
@@ -97,7 +98,7 @@ def _retrieval_section(report: dict[str, Any]) -> dict[str, Any]:
         if (
             isinstance(row, dict)
             and row.get("metric") == "retrieval_ndcg_10"
-            and row.get("slice") in {None, "__overall__", "overall"}
+            and row.get("slice") in {None, OVERALL_SLICE, "overall"}
         ):
             match = row
             break
@@ -226,12 +227,13 @@ def build_rag_evidence(
     nli_model: str | None = None,
     nli_responses_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Assemble the Phase 6 RAG evidence artifact."""
+    """Assemble the RAG evidence artifact from a run report and local evidence JSONL."""
     report = _read_json(report_path)
-    if report.get("schema_version") != "2.1":
+    if report.get("schema_version") != REPORT_SCHEMA_VERSION:
         raise RagError(
             "UNSUPPORTED_SCHEMA",
-            f"{report_path}: expected report schema 2.1, got {report.get('schema_version')!r}",
+            f"{report_path}: expected report schema {REPORT_SCHEMA_VERSION}, "
+            f"got {report.get('schema_version')!r}",
         )
     cases = _load_evidence(evidence_path)
 
@@ -249,7 +251,7 @@ def build_rag_evidence(
         if nli_provider != "mock":
             raise RagError(
                 "PROVIDER_UNSUPPORTED",
-                "Phase 6 CI path supports --nli-provider mock only",
+                "the deterministic evidence path supports --nli-provider mock only",
             )
         if nli_model is None or nli_responses_path is None:
             raise RagError(

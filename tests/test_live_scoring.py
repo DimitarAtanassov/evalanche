@@ -10,8 +10,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from evalharness import cli
 from evalharness.cli import app
+from evalharness.cli import judge as cli_judge
+from evalharness.cli import rag as cli_rag
 from evalharness.config import get_settings
 from evalharness.core.enums import ErrorClass, FinishReason
 from evalharness.core.models import (
@@ -744,7 +745,7 @@ def test_live_judge_cli_closes_provider(tmp_path: Path, monkeypatch: pytest.Monk
         encoding="utf-8",
     )
     provider = FakeProvider(['{"schema_version":"1.0","reasoning":"Correct.","score":5}'])
-    monkeypatch.setattr(cli, "_create_scoring_provider", lambda *args, **kwargs: provider)
+    monkeypatch.setattr(cli_judge, "build_managed_provider", lambda *args, **kwargs: provider)
 
     result = runner.invoke(
         app,
@@ -779,7 +780,7 @@ def test_live_judge_cli_closes_provider(tmp_path: Path, monkeypatch: pytest.Monk
 
 def test_live_rag_cli_closes_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     provider = FakeProvider(['{"schema_version":"1.0","label":"entailment"}'] * 5)
-    monkeypatch.setattr(cli, "_create_scoring_provider", lambda *args, **kwargs: provider)
+    monkeypatch.setattr(cli_rag, "build_managed_provider", lambda *args, **kwargs: provider)
     output = tmp_path / "rag.json"
 
     result = runner.invoke(
@@ -817,7 +818,7 @@ def test_live_rag_cli_closes_provider_when_the_run_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = RaisingProvider(ValueError("malformed request"))
-    monkeypatch.setattr(cli, "_create_scoring_provider", lambda *args, **kwargs: provider)
+    monkeypatch.setattr(cli_rag, "build_managed_provider", lambda *args, **kwargs: provider)
     output = tmp_path / "rag.json"
 
     result = runner.invoke(

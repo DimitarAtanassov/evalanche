@@ -71,7 +71,7 @@ def _validate_license_policy(bundle: DatasetBundle, report: ValidationReport) ->
 
     Location decides redistribution, not only the operator's claim: a pack under
     ``fixtures/`` ships with the repository whether or not it sets the flag, and
-    whether or not it carries a Phase 4 ``schema_version``.
+    whether or not it carries a versioned ``schema_version``.
     """
     manifest = bundle.manifest
     source = manifest.source
@@ -102,7 +102,7 @@ def _validate_versioned_manifest(bundle: DatasetBundle, report: ValidationReport
         or manifest.contamination_risk is None
         or manifest.pii_scrub_procedure is None
     ):
-        report.errors.append("Phase 4 manifest fields must all be present")
+        report.errors.append("schema_version 0.1 manifest fields must all be present")
         return
 
     source = manifest.source

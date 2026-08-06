@@ -153,7 +153,7 @@ def test_pairwise_swap_consistency_and_flip_becomes_tie(tmp_path: Path) -> None:
     assert artifact.pairwise_summary.position_bias == pytest.approx(2 / 3)
     graph = artifact.pairwise_summary.bradley_terry
     assert graph is not None
-    # A connected graph yields raw win rates; Phase 6 never fits BT strengths.
+    # A connected graph yields raw win rates; the harness never fits BT strengths.
     assert graph.status == "win_rates_only"
     assert graph.win_rates == {  # type: ignore[union-attr]
         "llama3.2:3b": pytest.approx(1.0),

@@ -2,75 +2,33 @@
 
 from __future__ import annotations
 
-import json
 import re
-from functools import lru_cache
 from typing import Any, cast
 
 import altair as alt
-import vl_convert
 from jinja2 import Environment, PackageLoader, select_autoescape
 
+from evalharness.charts import ACCENT, FONT, LINE, MUTED, chart_data, render_chart, vega_runtime
 from evalharness.suite.models import SuiteReport
 
 LEADERBOARD_CHART_DIV_ID = "suite-chart-leaderboard"
 SLICE_CHART_DIV_ID = "suite-chart-slices"
 LATENCY_CHART_DIV_ID = "suite-chart-latency"
 
-_EMBED_OPTIONS = {"actions": False, "renderer": "svg"}
+# Deliberately a minimal subset of the run report theme: the golden suite HTML is
+# compared byte for byte, so adding config here changes every emitted chart spec.
 _THEME: dict[str, Any] = {
-    "font": "system-ui,-apple-system,'Segoe UI',sans-serif",
+    "font": FONT,
     "background": "transparent",
     "view": {"stroke": None},
-    "axis": {"gridColor": "#e4e8ee", "labelColor": "#5b6675", "titleColor": "#5b6675"},
-    "legend": {"labelColor": "#5b6675", "titleColor": "#5b6675"},
-    "bar": {"color": "#2f5bd7"},
+    "axis": {"gridColor": LINE, "labelColor": MUTED, "titleColor": MUTED},
+    "legend": {"labelColor": MUTED, "titleColor": MUTED},
+    "bar": {"color": ACCENT},
 }
 _templates = Environment(
     loader=PackageLoader("evalharness.suite", "templates"),
     autoescape=select_autoescape(enabled_extensions=("html", "j2"), default_for_string=True),
 )
-
-
-@lru_cache(maxsize=1)
-def _vega_runtime() -> str:
-    return vl_convert.javascript_bundle()  # type: ignore[call-arg]
-
-
-def _data(rows: list[dict[str, Any]]) -> alt.Data:
-    return alt.Data(values=rows)  # type: ignore[no-untyped-call]
-
-
-_SCRIPT_UNSAFE = {
-    "<": "\\u003c",
-    ">": "\\u003e",
-    "&": "\\u0026",
-    "\u2028": "\\u2028",
-    "\u2029": "\\u2029",
-}
-
-
-def _script_json(value: Any) -> str:
-    """Serialize JSON for inline embedding inside a <script> element.
-
-    Chart specs carry run labels and slice names, so a member run could otherwise
-    close the script element with ``</script>`` or break the statement with a raw
-    U+2028/U+2029, which JSON permits in strings but JavaScript treats as a line
-    terminator. Escaping to \\uXXXX keeps the value JSON-identical after parsing.
-    """
-    encoded = json.dumps(value, sort_keys=True)
-    return "".join(_SCRIPT_UNSAFE.get(character, character) for character in encoded)
-
-
-def _render_chart(chart: alt.Chart | None, div_id: str) -> str:
-    if chart is None:
-        return ""
-    spec = _script_json(chart.configure(**_THEME).to_dict())
-    options = _script_json(_EMBED_OPTIONS)
-    return (
-        f'<div id="{div_id}" class="chart"></div>\n'
-        f'<script>vegaEmbed("#{div_id}", {spec}, {options});</script>'
-    )
 
 
 def _bar_chart(
@@ -94,7 +52,7 @@ def _bar_chart(
     if color is not None:
         encoding["color"] = alt.Color(f"{color}:N", title=None)
     chart = (
-        alt.Chart(_data(rows))
+        alt.Chart(chart_data(rows))
         .mark_bar()
         .encode(**encoding)
         .properties(width="container", height=max(160, 30 * len(rows)))
@@ -139,7 +97,7 @@ def suite_to_html(report: SuiteReport) -> str:
     slice_rows = _slice_rows(view)
     latency_rows = _latency_rows(view)
     charts = {
-        "leaderboard": _render_chart(
+        "leaderboard": render_chart(
             _bar_chart(
                 leaderboard_rows,
                 category="label",
@@ -148,8 +106,9 @@ def suite_to_html(report: SuiteReport) -> str:
                 color="group",
             ),
             LEADERBOARD_CHART_DIV_ID,
+            theme=_THEME,
         ),
-        "slices": _render_chart(
+        "slices": render_chart(
             _bar_chart(
                 slice_rows,
                 category="slice",
@@ -158,8 +117,9 @@ def suite_to_html(report: SuiteReport) -> str:
                 color="label",
             ),
             SLICE_CHART_DIV_ID,
+            theme=_THEME,
         ),
-        "latency": _render_chart(
+        "latency": render_chart(
             _bar_chart(
                 latency_rows,
                 category="label",
@@ -167,12 +127,13 @@ def suite_to_html(report: SuiteReport) -> str:
                 value_title="p95 latency (ms)",
             ),
             LATENCY_CHART_DIV_ID,
+            theme=_THEME,
         ),
     }
     rendered = _templates.get_template("suite.html.j2").render(
         suite=view,
         charts=charts,
-        runtime=_vega_runtime() if any(charts.values()) else "",
+        runtime=vega_runtime() if any(charts.values()) else "",
         leaderboard_rows=leaderboard_rows,
         slice_rows=slice_rows,
         latency_rows=latency_rows,

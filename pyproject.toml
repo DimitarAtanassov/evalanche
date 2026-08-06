@@ -61,7 +61,6 @@ openai_compatible = "evalharness.providers.openai_compatible:OpenAICompatiblePro
 mock = "evalharness.providers.mock:MockProvider"
 
 [project.entry-points."evalharness.metrics"]
-exact_match = "evalharness.scoring.exact_match:ExactMatchMetric"
 bertscore = "evalharness.scoring.ml:BERTScoreMetric"
 
 [build-system]

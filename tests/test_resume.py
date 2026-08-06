@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from evalharness.datasets import load_dataset, validate_dataset
+from evalharness.datasets import dataset_upsert_fields, load_dataset, validate_dataset
 from evalharness.execution.executor import Executor, render_prompt
 from evalharness.hashing import sha256_hex
 from evalharness.observability import PipelineStage, ProgressEvent
@@ -41,7 +41,7 @@ async def test_resume_produces_same_outputs(db_ready, tmp_path: Path) -> None:
 
     async with session_scope() as session:
         repo = RunRepository(session)
-        dataset_id = await repo.upsert_dataset(bundle)
+        dataset_id = await repo.upsert_dataset(**dataset_upsert_fields(bundle))
         prompt_template_id = await repo.upsert_prompt_template(
             name="t", version="1", body=template_body, sha256=template_sha
         )

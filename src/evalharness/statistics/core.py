@@ -21,6 +21,18 @@ def wilson_interval(successes: int, n: int, confidence: float = 0.95) -> tuple[f
     return max(0.0, center - margin), min(1.0, center + margin)
 
 
+def percentile(values: list[float], p: float) -> float:
+    if not values:
+        return 0.0
+    sorted_vals = sorted(values)
+    k = (len(sorted_vals) - 1) * p
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return sorted_vals[int(k)]
+    return sorted_vals[f] * (c - k) + sorted_vals[c] * (k - f)
+
+
 def bca_bootstrap(
     values: list[float],
     statistic: Callable[[np.ndarray], float] = np.mean,

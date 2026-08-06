@@ -20,5 +20,5 @@ def truncate_evidence(value: str) -> str:
 
 
 def truncate_gallery(value: str) -> str:
-    """Bound gallery text to the Phase 3 example limit."""
+    """Bound and redact gallery example text for published artifacts."""
     return sanitize_text(value, max_chars=GALLERY_TEXT_LIMIT)

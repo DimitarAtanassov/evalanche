@@ -8,10 +8,10 @@ interval.**
 
 Everything lives in the [`statistics/`](../../../src/evalharness/statistics/) package
 (`core.py` + `comparison.py`), re‑exported from
-[`statistics/__init__.py`](../../../src/evalharness/statistics/__init__.py). A few Wilson /
-percentile helpers are duplicated in
-[`scoring/stats.py`](../../../src/evalharness/scoring/stats.py) for the scoring path. These
-are **functions, not registry metrics** — they power `evalctl runs compare`, `evalctl
+[`statistics/__init__.py`](../../../src/evalharness/statistics/__init__.py). The Wilson and
+percentile helpers are re‑exported from
+[`scoring/stats.py`](../../../src/evalharness/scoring/stats.py) as a compatibility shim for
+the scoring path. These are **functions, not registry metrics** — they power `evalctl runs compare`, `evalctl
 power`, and the metric aggregates.
 
 ## The tools

@@ -38,6 +38,7 @@ from evalharness.observability import (
     log_context,
     payload_summary,
 )
+from evalharness.providers.retry import retry_after_seconds
 from evalharness.store.db import session_scope
 from evalharness.store.repository import RunRepository
 
@@ -169,23 +170,6 @@ def classify_outcome(
 async def _retry_delay(attempt: int, base: float, cap: float) -> float:
     exp = min(cap, base * (2**attempt))
     return random.uniform(0, exp)
-
-
-def _retry_after_seconds(exc: Exception) -> float | None:
-    response = getattr(exc, "response", None)
-    if response is None:
-        return None
-    value = response.headers.get("Retry-After")
-    if value is None:
-        return None
-    try:
-        return max(0.0, float(value))
-    except ValueError:
-        try:
-            retry_at = datetime.strptime(value, "%a, %d %b %Y %H:%M:%S GMT").replace(tzinfo=UTC)
-        except ValueError:
-            return None
-        return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())
 
 
 class Executor:
@@ -735,7 +719,7 @@ class Executor:
                             self.settings.default_retry_base_s,
                             self.settings.default_retry_cap_s,
                         )
-                        retry_after = _retry_after_seconds(exc)
+                        retry_after = retry_after_seconds(exc)
                         delay = max(jitter, retry_after or 0.0)
                         logger.warning(
                             "provider_retry_scheduled",

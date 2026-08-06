@@ -11,6 +11,17 @@ from evalharness.scoring.normalizer import Normalizer, NormalizerConfig
 
 
 class MetricRegistry:
+    """Name-to-metric lookup for the scoring engine.
+
+    Built-in metrics register through :meth:`defaults`, which constructs the ones needing
+    injected collaborators and takes the rest from ``scoring/catalog.py``. The
+    ``evalharness.metrics`` entry-point group is for optional external extras that ship
+    behind their own dependency group, today only ``bertscore`` behind ``metrics-ml``.
+    :meth:`discover` calls an entry point with no arguments, so an entry-point metric must
+    be constructible without collaborators; anything that needs one belongs in
+    :meth:`defaults`.
+    """
+
     def __init__(self) -> None:
         self._metrics: dict[str, Metric] = {}
 
@@ -40,6 +51,7 @@ class MetricRegistry:
 
     @classmethod
     def discover(cls) -> MetricRegistry:
+        """Built-in metrics plus any optional external extra on the entry-point group."""
         registry = cls.defaults()
         for ep in entry_points(group="evalharness.metrics"):
             if ep.name in registry._metrics:

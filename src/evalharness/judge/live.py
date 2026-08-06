@@ -49,7 +49,7 @@ from evalharness.providers.structured_output import (
     parse_pointwise_output,
     pointwise_json_schema,
 )
-from evalharness.scoring.stats import percentile
+from evalharness.statistics import percentile
 
 JUDGE_PROMPT_VERSION = "judge_prompt_v1"
 _SWAP_POSITIONS: tuple[Literal[0], Literal[1]] = (0, 1)

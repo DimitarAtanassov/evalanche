@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from evalharness.core.constants import OVERALL_SLICE
 from evalharness.core.enums import Requirement, TaskType
 from evalharness.core.models import AggregateValue, Case, Generation, ScoreValue, ScoringContext
 from evalharness.scoring.normalizer import Normalizer
-from evalharness.scoring.stats import wilson_interval
+from evalharness.statistics import wilson_interval
 
 
 class ExactMatchMetric:
@@ -60,7 +61,7 @@ class ExactMatchMetric:
             return AggregateValue(
                 metric_name=self.name,
                 metric_version=self.version,
-                slice_key="__overall__",
+                slice_key=OVERALL_SLICE,
                 n=0,
                 value=0.0,
                 ci_low=None,
@@ -74,7 +75,7 @@ class ExactMatchMetric:
         return AggregateValue(
             metric_name=self.name,
             metric_version=self.version,
-            slice_key="__overall__",
+            slice_key=OVERALL_SLICE,
             n=n,
             value=rate,
             ci_low=ci_low,

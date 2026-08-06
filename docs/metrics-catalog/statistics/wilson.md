@@ -50,10 +50,9 @@ def wilson_interval(successes: int, n: int, confidence: float = 0.95) -> tuple[f
 - **Signature:** `wilson_interval(successes: int, n: int, confidence: float = 0.95)` in
   [`statistics/core.py`](../../../src/evalharness/statistics/core.py) (z from the Normal
   quantile).
-- A second copy exists in [`scoring/stats.py`](../../../src/evalharness/scoring/stats.py)
-  with a fixed `z = 1.96` (used by `exact_match`/reporting). **Same formula, slightly
-  different z source** — the `statistics` version derives z from `confidence`, the scoring
-  version hardcodes 1.96 (≈ 95%). Prefer the `statistics` one for non‑95% levels.
+- [`scoring/stats.py`](../../../src/evalharness/scoring/stats.py) re‑exports this same
+  function for the scoring path; it is a compatibility shim, not a second implementation.
+  Import from `evalharness.statistics` in new code.
 - `n = 0` → `(0.0, 0.0)`.
 
 ## Output
@@ -69,8 +68,8 @@ def wilson_interval(successes: int, n: int, confidence: float = 0.95) -> tuple[f
 - **Thresholded aggregates count *passes*, not the mean.** Several `ScalarMetric`s Wilson the
   count of `value ≥ threshold`, so the interval is about the pass rate at that threshold, not
   the mean score — know which you're reporting.
-- **Two implementations.** Don't be surprised that `scoring/stats.py` and `statistics/core.py`
-  both define it; they agree at 95%.
+- **One implementation, two import paths.** `scoring/stats.py` re‑exports the
+  `statistics/core.py` function, so both paths give identical numbers.
 
 ## How it composes
 

@@ -1408,7 +1408,7 @@ Only items that are **truly not on current `main`** (or intentionally unfinished
 
 | Concern | Path |
 |---------|------|
-| CLI | `src/evalharness/cli.py` |
+| CLI | `src/evalharness/cli/` |
 | Config | `src/evalharness/config.py` |
 | Core types | `src/evalharness/core/{models,enums,protocols}.py` |
 | Executor | `src/evalharness/execution/executor.py` |

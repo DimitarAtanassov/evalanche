@@ -10,8 +10,14 @@ from typing import Literal, cast
 import yaml
 from pydantic import ValidationError
 
+from evalharness.artifacts.calibration import CalibrationArtifact
+from evalharness.core.constants import (
+    COMPARE_SCHEMA_VERSION,
+    OVERALL_SLICE,
+    REPORT_SCHEMA_VERSION,
+    SUITE_SCHEMA_VERSION,
+)
 from evalharness.hashing import calibration_body_digest
-from evalharness.judge.models import CalibrationArtifact
 from evalharness.suite.models import (
     ArtifactReference,
     CompareArtifact,
@@ -24,9 +30,8 @@ from evalharness.suite.models import (
     SuiteManifest,
 )
 
-SUITE_SCHEMA_VERSION = "0.1"
-RUN_SCHEMA_VERSION = "2.1"
-COMPARE_SCHEMA_VERSION = "1.0"
+RUN_SCHEMA_VERSION = REPORT_SCHEMA_VERSION
+# Judge calibration artifact, versioned independently of the suite and run schemas.
 PHASE_6_SCHEMA_VERSION = "0.1"
 
 
@@ -174,7 +179,7 @@ def _validate_supplement(
     if kind == "rag" and payload["gating_allowed"] is not False:
         raise SuiteValidationError(
             "INVALID_ARTIFACT",
-            f"{path}: Phase 6 RAG artifacts must remain informational",
+            f"{path}: RAG evidence artifacts must remain informational",
         )
 
 
@@ -228,7 +233,7 @@ def _validate_manifest_references(manifest: SuiteManifest, members: list[LoadedM
             member.report.run_id
             for member in matching
             if not any(
-                row.metric == primary.metric and row.slice == "__overall__"
+                row.metric == primary.metric and row.slice == OVERALL_SLICE
                 for row in member.report.metric_aggregates
             )
         ]

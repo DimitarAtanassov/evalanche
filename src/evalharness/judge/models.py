@@ -7,22 +7,17 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-
-class StrictModel(BaseModel):
-    """Reject unknown fields on versioned inputs."""
-
-    model_config = ConfigDict(extra="forbid")
+# The aliased names are re-exported: the judge subsystem produces calibration
+# artifacts, so it keeps publishing their contract under its own namespace.
+from evalharness.artifacts.calibration import AgreementMetric as AgreementMetric
+from evalharness.artifacts.calibration import CalibrationArtifact as CalibrationArtifact
+from evalharness.artifacts.calibration import SplitCalibration as SplitCalibration
+from evalharness.artifacts.calibration import StrictModel
 
 
 class JudgeMode(StrEnum):
     POINTWISE = "pointwise"
     PAIRWISE = "pairwise"
-
-
-class AgreementMetric(StrEnum):
-    COHEN_KAPPA = "cohen_kappa"
-    SPEARMAN = "spearman"
-    KRIPPENDORFF_ALPHA = "krippendorff_alpha"
 
 
 class LabelShape(StrEnum):
@@ -160,7 +155,7 @@ class BradleyTerryRefused(StrictModel):
 class PairwiseWinRates(StrictModel):
     """Connected pairwise graph summarised by raw win rates.
 
-    Phase 6 does not fit Bradley-Terry strengths, so ``status`` and ``win_rates``
+    The harness does not fit Bradley-Terry strengths, so ``status`` and ``win_rates``
     name what the numbers actually are. A consumer that needs identifiable BT
     strengths must not read these as such.
     """
@@ -219,30 +214,3 @@ class JudgmentArtifact(BaseModel):
         if self.gating_allowed and self.calibration_digest is None:
             raise ValueError("gating_allowed requires calibration_digest")
         return self
-
-
-class SplitCalibration(StrictModel):
-    label_set_id: str
-    n: int
-    agreement_metric: AgreementMetric
-    agreement: float | None
-    agreement_ci: tuple[float, float] | None = None
-
-
-class CalibrationArtifact(StrictModel):
-    model_config = ConfigDict(extra="forbid")
-
-    schema_version: Literal["0.1"] = "0.1"
-    calibration_digest: str
-    judgment_digest: str
-    rubric_name: str
-    rubric_version: str
-    holdout: SplitCalibration
-    dev: SplitCalibration | None
-    threshold: float
-    min_holdout_n: int
-    min_dev_n: int
-    family_separation_ok: bool
-    gating_allowed: bool
-    plain_language: str
-    block_reasons: list[str] = Field(default_factory=list)

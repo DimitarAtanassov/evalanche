@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from evalharness.core.enums import FailureOutcome, FinishReason, TaskType
 from evalharness.core.models import Case, Generation
-from evalharness.datasets.loader import DatasetBundle
 from evalharness.store.models import (
     CaseRow,
     DatasetRow,
@@ -31,39 +30,48 @@ class RunRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def upsert_dataset(self, bundle: DatasetBundle) -> int:
+    async def upsert_dataset(
+        self,
+        *,
+        name: str,
+        version: str,
+        split: str,
+        content_sha256: str,
+        license: str,
+        pii_scrubbed: bool,
+        created_at: str,
+        slices: Sequence[str],
+        cases: Sequence[Case],
+    ) -> int:
         stmt = select(DatasetRow).where(
-            DatasetRow.name == bundle.manifest.name,
-            DatasetRow.version == bundle.manifest.version,
+            DatasetRow.name == name,
+            DatasetRow.version == version,
         )
         existing = (await self.session.execute(stmt)).scalar_one_or_none()
         if existing:
-            if existing.content_sha256 != bundle.content_sha256:
-                raise ValueError(
-                    f"Dataset {bundle.manifest.name}@{bundle.manifest.version} already exists "
-                    "with different content"
-                )
+            if existing.content_sha256 != content_sha256:
+                raise ValueError(f"Dataset {name}@{version} already exists with different content")
             return existing.id
 
         row = DatasetRow(
-            name=bundle.manifest.name,
-            version=bundle.manifest.version,
-            content_sha256=bundle.content_sha256,
-            split=bundle.manifest.split,
+            name=name,
+            version=version,
+            content_sha256=content_sha256,
+            split=split,
             manifest={
-                "name": bundle.manifest.name,
-                "version": bundle.manifest.version,
-                "split": bundle.manifest.split,
-                "license": bundle.manifest.license,
-                "pii_scrubbed": bundle.manifest.pii_scrubbed,
-                "created_at": bundle.manifest.created_at,
-                "slices": bundle.manifest.slices,
+                "name": name,
+                "version": version,
+                "split": split,
+                "license": license,
+                "pii_scrubbed": pii_scrubbed,
+                "created_at": created_at,
+                "slices": list(slices),
             },
         )
         self.session.add(row)
         await self.session.flush()
 
-        for case in bundle.cases:
+        for case in cases:
             self.session.add(
                 CaseRow(
                     dataset_id=row.id,

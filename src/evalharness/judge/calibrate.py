@@ -238,7 +238,7 @@ def validate_calibration(
         plain = (
             f"Holdout agreement {agreement_holdout:.3f} meets threshold "
             f"{calibration_cfg.agreement_threshold} with n={holdout_section.n}; "
-            "family separation ok. Gating allowed for Phase 7 consumers."
+            "family separation ok. Gating allowed for downstream consumers."
         )
         block_reasons = []
     else:

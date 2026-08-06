@@ -8,6 +8,7 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
+from evalharness.core.constants import OVERALL_SLICE, SUITE_SCHEMA_VERSION
 from evalharness.hashing import judgment_identity_digest
 from evalharness.observability import sanitize_text
 from evalharness.suite.loader import canonical_json, load_suite
@@ -20,11 +21,9 @@ from evalharness.suite.models import (
 )
 from evalharness.suite.render import suite_to_html
 
-SUITE_SCHEMA_VERSION = "0.1"
 EXAMPLE_TEXT_LIMIT = 280
 EXAMPLE_LIMIT_PER_MEMBER = 8
 EXAMPLE_LIMIT_TOTAL = 24
-OVERALL_SLICE = "__overall__"
 JUDGE_UNBOUND_BLOCK_REASON = (
     "CALIBRATION_JUDGMENT_MISMATCH: no passing calibration in this suite binds to "
     "this judgment body"

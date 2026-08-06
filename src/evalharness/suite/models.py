@@ -103,7 +103,7 @@ class MetricAggregate(StrictModel):
 
 
 class RunArtifact(BaseModel):
-    """Required Phase 5 projection of a run report 2.1."""
+    """Required projection of a run report 2.1."""
 
     model_config = ConfigDict(extra="allow", strict=True)
 
@@ -183,7 +183,7 @@ class LoadedCompare(BaseModel):
 
 
 class LoadedSupplement(BaseModel):
-    """Validated optional Phase 6 artifact plus deterministic provenance."""
+    """Validated optional judge or RAG artifact plus deterministic provenance."""
 
     declared_path: str
     resolved_path: str

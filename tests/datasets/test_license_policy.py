@@ -109,7 +109,7 @@ def test_unlisted_license_under_fixtures_is_rejected_despite_false_flag(tmp_path
 
 
 def test_legacy_unlisted_license_under_fixtures_is_rejected(tmp_path: Path) -> None:
-    """Allow-list applies under fixtures/ even when Phase 4 schema_version is absent."""
+    """Allow-list applies under fixtures/ even when schema_version is absent."""
     dataset = copy_dataset(
         SMOKE_ROOT / "synthetic-qa-smoke",
         tmp_path / "fixtures" / "datasets" / "legacy-nc-license",

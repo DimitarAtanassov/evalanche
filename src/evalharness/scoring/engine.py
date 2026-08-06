@@ -6,6 +6,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Iterable
 
+from evalharness.core.constants import OVERALL_SLICE
 from evalharness.core.enums import Requirement
 from evalharness.core.models import Case, Generation, ScoreValue, ScoringContext
 from evalharness.core.protocols import Metric
@@ -25,7 +26,6 @@ from evalharness.scoring.registry import MetricRegistry
 from evalharness.store.db import session_scope
 from evalharness.store.repository import RunRepository
 
-OVERALL_SLICE = "__overall__"
 logger = get_logger(__name__)
 
 
