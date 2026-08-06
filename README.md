@@ -41,25 +41,37 @@ Harness failures (a provider timing out, garbage output) are counted separately 
 
 ## What the reports look like
 
-Every run produces a self‑contained HTML dashboard (no CDN, no network) alongside the JSON and JUnit artifacts. The dashboard below is the committed offline proof of concept in [`fixtures/poc/`](fixtures/poc/), rendered from a fixed mock run:
+Every run emits Altair / Vega‑Lite charts embedded in a self‑contained HTML dashboard (no CDN). The images below are those chart specs exported to PNG, not page screenshots of empty tables.
 
-![Run report dashboard: verdict, KPIs, evaluation context, sampled cases, and metric charts](docs/assets/report-dashboard.png)
+### Multi‑industry suite
 
-Each chart ships beside an accessible table. Reliability is split from quality, and latency is always reported as percentiles, never a lone mean:
+`evalctl suite build` ranks published runs on each dataset's primary metric. This leaderboard is eight live Ollama runs across QA, news, healthcare, finance, math, extraction, retrieval, and summarization:
 
-![Generation outcomes by category](docs/assets/chart-outcome-breakdown.png)
+![Suite leaderboard across eight synthetic industries](docs/assets/suite-leaderboard.png)
+
+p95 latency across the same members:
+
+![Suite p95 latency by member](docs/assets/suite-latency.png)
+
+### Single‑run quality charts
+
+From the committed PoC run (`fixtures/poc/`): metric scores with 95% confidence intervals, and pass rate by slice:
+
+![Metric scores with 95% CI](docs/assets/chart-metric-scores.png)
+
+![Pass rate by slice](docs/assets/chart-slice-pass-rate.png)
+
+Reliability and speed are separate from quality:
+
+![Generation outcomes](docs/assets/chart-outcome-breakdown.png)
 
 ![End-to-end latency percentiles](docs/assets/chart-latency-percentiles.png)
 
-### Suite leaderboard
+### Industry example (finance)
 
-`evalctl suite build` folds many published run reports into one digest‑pinned suite dashboard: a coverage matrix of declared members, primary‑metric leaderboards, weakest‑slice views, and p95 latency. The example below is a live Ollama suite across eight synthetic task families (`qa`, `news`, `healthcare`, `finance`, `math`, `extraction`, `retrieval`, `summarization`):
+A live finance pack scored with `numeric_assertion`, sliced by domain:
 
-![Suite dashboard: coverage matrix of eight publishable Ollama runs across synthetic task families](docs/assets/suite-dashboard.png)
-
-Primary metrics differ by task family (`squad_f1`, `classification`, `numeric_assertion`, `json_validity`, `retrieval_ndcg_10`, `rouge_l`), so the leaderboard ranks each member on the metric declared for its dataset:
-
-![Suite leaderboard: primary metric by member across eight synthetic task families](docs/assets/suite-leaderboard.png)
+![Finance numeric_assertion by slice](docs/assets/run-finance-slices.png)
 
 ## How it is used
 
