@@ -1,4 +1,4 @@
-"""Pairwise swap resolution and Bradley-Terry connectivity."""
+"""Pairwise swap resolution and pairwise-graph connectivity."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ from collections import defaultdict, deque
 from collections.abc import Iterable
 
 from evalharness.judge.models import (
-    BradleyTerryAccepted,
     BradleyTerryRefused,
     PairwiseItem,
     PairwiseOrdering,
+    PairwiseWinRates,
 )
 
 
@@ -90,10 +90,15 @@ def _connected_components(nodes: set[str], edges: Iterable[tuple[str, str]]) -> 
     return components
 
 
-def bradley_terry_summary(
+def pairwise_graph_summary(
     items: list[PairwiseItem],
-) -> BradleyTerryAccepted | BradleyTerryRefused:
-    """Accept Bradley-Terry only under the contract connectivity rule."""
+) -> PairwiseWinRates | BradleyTerryRefused:
+    """Summarise the pairwise graph, refusing under the contract connectivity rule.
+
+    Connectivity is the contract gate a Bradley-Terry fit would need. It is checked
+    here so the refusal shape stays correct, but a connected graph yields win rates
+    rather than fitted strengths.
+    """
     nodes = {item.a_model_label for item in items} | {item.b_model_label for item in items}
     edges: list[tuple[str, str]] = []
     wins: dict[str, float] = defaultdict(float)
@@ -128,14 +133,12 @@ def bradley_terry_summary(
             isolated_models=isolated,
         )
 
-    # Simple win-rate strengths; connectivity is the contract gate, not MLE.
-    scores = {
-        node: (wins[node] / matches[node]) if matches[node] else 0.0 for node in sorted(nodes)
-    }
-    return BradleyTerryAccepted(
+    return PairwiseWinRates(
         n_models=len(nodes),
         n_edges=len(unique_edges),
-        scores=scores,
+        win_rates={
+            node: (wins[node] / matches[node]) if matches[node] else 0.0 for node in sorted(nodes)
+        },
         component_sizes=component_sizes,
         isolated_models=isolated,
     )

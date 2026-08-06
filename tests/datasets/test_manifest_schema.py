@@ -1,4 +1,4 @@
-"""schema_version strictness and legacy compatibility for Phase 4 manifests."""
+"""schema_version strictness and legacy compatibility for dataset manifests."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from tests.datasets._helpers import (
 )
 
 
-def test_legacy_manifest_loads_without_phase4_fields() -> None:
+def test_legacy_manifest_loads_without_schema_version_fields() -> None:
     bundle = load_dataset(Path("fixtures/sample_dataset"))
 
     assert bundle.manifest.schema_version is None

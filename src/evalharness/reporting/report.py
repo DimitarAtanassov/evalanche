@@ -146,12 +146,17 @@ def _percentile(values: list[float], q: float) -> float:
 
 
 def _truncate(value: str | None, limit: int = EXAMPLE_TEXT_LIMIT) -> str | None:
+    """Single-line text at most ``limit`` chars, counting the ellipsis inside the cap.
+
+    Matches ``observability.sanitize_text`` and the suite, judge, and RAG bounds so a
+    published limit means the same number of characters everywhere.
+    """
     if value is None:
         return None
     cleaned = " ".join(value.split())
     if len(cleaned) <= limit:
         return cleaned
-    return cleaned[:limit] + "…"
+    return cleaned[: limit - 1] + "…"
 
 
 def _format_inputs(inputs: dict[str, Any]) -> str:

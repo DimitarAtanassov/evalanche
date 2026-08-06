@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -66,8 +67,6 @@ async def test_resume_produces_same_outputs(db_ready, tmp_path: Path) -> None:
     # Simulate partial run: only first 2 cases
     config, items = await executor.plan(run_id)
     partial_items = items[:2]
-    import asyncio
-
     sem = asyncio.Semaphore(2)
     await asyncio.gather(*[executor._run_one(run_id, config, item, sem) for item in partial_items])
 

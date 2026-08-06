@@ -8,6 +8,7 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
+from evalharness.hashing import judgment_identity_digest
 from evalharness.observability import sanitize_text
 from evalharness.suite.loader import canonical_json, load_suite
 from evalharness.suite.models import (
@@ -17,12 +18,17 @@ from evalharness.suite.models import (
     LoadedSupplement,
     SuiteReport,
 )
+from evalharness.suite.render import suite_to_html
 
 SUITE_SCHEMA_VERSION = "0.1"
 EXAMPLE_TEXT_LIMIT = 280
 EXAMPLE_LIMIT_PER_MEMBER = 8
 EXAMPLE_LIMIT_TOTAL = 24
 OVERALL_SLICE = "__overall__"
+JUDGE_UNBOUND_BLOCK_REASON = (
+    "CALIBRATION_JUDGMENT_MISMATCH: no passing calibration in this suite binds to "
+    "this judgment body"
+)
 
 
 def _text(value: JsonValue, fallback: str = "") -> str:
@@ -255,12 +261,7 @@ def _slices(
 
 
 def _bounded_text(value: str) -> str:
-    # sanitize_text appends an ellipsis past its cap, so its own bound yields limit + 1 chars.
-    # The suite contract counts the ellipsis inside EXAMPLE_TEXT_LIMIT.
-    sanitized = sanitize_text(value, max_chars=EXAMPLE_TEXT_LIMIT)
-    if len(sanitized) <= EXAMPLE_TEXT_LIMIT:
-        return sanitized
-    return sanitized[: EXAMPLE_TEXT_LIMIT - 1] + "…"
+    return sanitize_text(value, max_chars=EXAMPLE_TEXT_LIMIT)
 
 
 def _safe_example_value(value: JsonValue) -> JsonValue:
@@ -375,30 +376,49 @@ def _calibration_summaries(
     return summaries
 
 
-def _passing_calibration_digests(artifacts: list[LoadedSupplement]) -> set[str]:
-    """Gate badges follow calibration.json, never a forged judgment bit alone."""
-    digests: set[str] = set()
+def _passing_calibrations(
+    artifacts: list[LoadedSupplement],
+) -> dict[str, dict[str, JsonValue]]:
+    """Index passing calibrations by digest; the gate bit only ever comes from here."""
+    passing: dict[str, dict[str, JsonValue]] = {}
     for artifact in artifacts:
         payload = artifact.payload
         digest = payload.get("calibration_digest")
         if payload.get("gating_allowed") is True and isinstance(digest, str) and digest:
-            digests.add(digest)
-    return digests
+            passing[digest] = payload
+    return passing
+
+
+def _judgment_is_bound(
+    payload: dict[str, JsonValue],
+    passing_calibrations: dict[str, dict[str, JsonValue]],
+) -> bool:
+    """Require the judgment and calibration to reference each other, both ways.
+
+    Membership in ``passing_calibrations`` alone only proves the judgment quoted a
+    digest that exists, which any file can copy. Re-deriving the judgment body
+    digest is what makes a stolen digest useless.
+    """
+    if payload.get("gating_allowed") is not True:
+        return False
+    claimed = payload.get("calibration_digest")
+    if not isinstance(claimed, str):
+        return False
+    calibration = passing_calibrations.get(claimed)
+    if calibration is None:
+        return False
+    return calibration.get("judgment_digest") == judgment_identity_digest(payload)
 
 
 def _judge_summaries(
     artifacts: list[LoadedSupplement],
     *,
-    passing_calibration_digests: set[str],
+    passing_calibrations: dict[str, dict[str, JsonValue]],
 ) -> list[dict[str, JsonValue]]:
     summaries: list[dict[str, JsonValue]] = []
     for artifact in artifacts:
         payload = artifact.payload
-        calibration_digest = payload.get("calibration_digest")
-        digest_ok = (
-            isinstance(calibration_digest, str)
-            and calibration_digest in passing_calibration_digests
-        )
+        bound = _judgment_is_bound(payload, passing_calibrations)
         summaries.append(
             {
                 "path": artifact.declared_path,
@@ -407,9 +427,11 @@ def _judge_summaries(
                 "rubric_name": payload.get("rubric_name"),
                 "rubric_version": payload.get("rubric_version"),
                 "judge_model": payload.get("judge_model"),
-                "calibration_digest": calibration_digest,
-                "gating_allowed": payload.get("gating_allowed") is True and digest_ok,
-                "gating_block_reason": payload.get("gating_block_reason"),
+                "calibration_digest": payload.get("calibration_digest"),
+                "gating_allowed": bound,
+                "gating_block_reason": payload.get("gating_block_reason")
+                if bound
+                else JUDGE_UNBOUND_BLOCK_REASON,
             }
         )
     return summaries
@@ -472,7 +494,7 @@ def assemble_suite(suite: LoadedSuite) -> SuiteReport:
         calibrations=_calibration_summaries(suite.calibrations) or None,
         judge_artifacts=_judge_summaries(
             suite.judge_artifacts,
-            passing_calibration_digests=_passing_calibration_digests(suite.calibrations),
+            passing_calibrations=_passing_calibrations(suite.calibrations),
         )
         or None,
         rag_artifacts=_rag_summaries(suite.rag_artifacts) or None,
@@ -503,8 +525,6 @@ def build_suite(path: Path) -> SuiteReport:
 
 def write_suite_artifacts(manifest_path: Path, output_dir: Path) -> SuiteReport:
     """Build and atomically publish canonical suite JSON and offline HTML."""
-    from evalharness.suite.render import suite_to_html
-
     report = build_suite(manifest_path)
     contents = {
         "suite.json": suite_to_json(report),

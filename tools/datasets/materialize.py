@@ -17,7 +17,9 @@ import yaml
 from evalharness.datasets import DatasetTier, load_dataset, validate_dataset
 from evalharness.datasets.validator import (
     ALLOWED_SMOKE_LICENSES,
+    ATTRIBUTION_LICENSES,
     FIXTURES_DIR,
+    SHA256_PATTERN,
     TIER_SIZE_BOUNDS,
 )
 from tools.datasets.adapters import ADAPTERS, AdapterSpec, CaseRecord, fits_field_bounds
@@ -62,12 +64,22 @@ def _load_external_pin(source: Path, spec: AdapterSpec) -> SourcePin:
             "pin requires only revision, revision_digest, and canonical_url strings",
         )
     revision = cast(str, raw["revision"])
+    revision_digest = cast(str, raw["revision_digest"])
+    canonical_url = cast(str, raw["canonical_url"])
+    if not revision.strip():
+        raise MaterializationError("SOURCE_PIN_INVALID", "revision must be non-empty")
+    if not SHA256_PATTERN.fullmatch(revision_digest):
+        raise MaterializationError(
+            "SOURCE_PIN_INVALID",
+            "revision_digest must be sha256:<64 lowercase hex>",
+        )
+    if "://" not in canonical_url:
+        raise MaterializationError("SOURCE_PIN_INVALID", "canonical_url must be absolute")
     if spec.source_revision != "operator-pinned" and revision != spec.source_revision:
         raise MaterializationError(
             "SOURCE_REVISION_MISMATCH",
             f"expected {spec.source_revision}, got {revision}",
         )
-    canonical_url = cast(str, raw["canonical_url"])
     if spec.canonical_url is not None and canonical_url != spec.canonical_url:
         raise MaterializationError(
             "SOURCE_URL_MISMATCH",
@@ -75,7 +87,7 @@ def _load_external_pin(source: Path, spec: AdapterSpec) -> SourcePin:
         )
     return SourcePin(
         revision=revision,
-        revision_digest=cast(str, raw["revision_digest"]),
+        revision_digest=revision_digest,
         canonical_url=canonical_url,
     )
 
@@ -94,8 +106,6 @@ def _source_pin(source: Path, spec: AdapterSpec) -> SourcePin:
             "SOURCE_DIGEST_MISMATCH",
             f"expected {pin.revision_digest}, got {source_digest}",
         )
-    if "://" not in pin.canonical_url:
-        raise MaterializationError("SOURCE_PIN_INVALID", "canonical_url must be absolute")
     return pin
 
 
@@ -113,7 +123,39 @@ def _committed_fixture_root(output: Path) -> Path | None:
     return None
 
 
+def _card_section(document: str, source_id: str) -> str | None:
+    heading = f"### {source_id}"
+    lines = document.splitlines()
+    try:
+        start = lines.index(heading)
+    except ValueError:
+        return None
+    end = next(
+        (index for index in range(start + 1, len(lines)) if lines[index].startswith("### ")),
+        len(lines),
+    )
+    return "\n".join(lines[start + 1 : end])
+
+
+def _card_field(card: str, label: str) -> str | None:
+    prefix = f"- {label}:"
+    for line in card.splitlines():
+        if line.startswith(prefix):
+            value = line.removeprefix(prefix).strip().strip("`.")
+            return value or None
+    return None
+
+
 def _enforce_license(spec: AdapterSpec, output: Path) -> None:
+    if (
+        spec.redistributable_smoke
+        and spec.license in ATTRIBUTION_LICENSES
+        and not spec.attribution.strip()
+    ):
+        raise MaterializationError(
+            "LICENSE_BLOCK",
+            f"{spec.license} requires nonempty attribution",
+        )
     tree_root = _committed_fixture_root(output)
     if tree_root is None:
         return
@@ -123,10 +165,40 @@ def _enforce_license(spec: AdapterSpec, output: Path) -> None:
             f"{spec.source_id} may only be materialized outside tracked fixtures",
         )
     datasets_doc = tree_root / "docs" / "datasets.md"
-    if not datasets_doc.is_file() or spec.source_id not in datasets_doc.read_text(encoding="utf-8"):
+    card = (
+        _card_section(datasets_doc.read_text(encoding="utf-8"), spec.source_id)
+        if datasets_doc.is_file()
+        else None
+    )
+    required_card_values = (
+        spec.license,
+        spec.source_revision,
+        "Redistribution",
+        "Attribution",
+        "Task/metrics",
+        "Privacy",
+    )
+    card_values = (
+        (
+            _card_field(card, "License"),
+            _card_field(card, "Source revision"),
+            _card_field(card, "Redistribution"),
+            _card_field(card, "Attribution"),
+            _card_field(card, "Task/metrics"),
+            _card_field(card, "Privacy"),
+        )
+        if card is not None
+        else ()
+    )
+    if len(card_values) != len(required_card_values) or any(
+        actual is None or (index < 2 and actual != expected)
+        for index, (actual, expected) in enumerate(
+            zip(card_values, required_card_values, strict=True)
+        )
+    ):
         raise MaterializationError(
             "LICENSE_BLOCK",
-            f"docs/datasets.md has no card for {spec.source_id}",
+            f"docs/datasets.md has no complete card for {spec.source_id}",
         )
 
 
@@ -206,6 +278,32 @@ def _serialize_cases(records: list[CaseRecord]) -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
+def materialization_version(
+    spec: AdapterSpec,
+    pin: SourcePin,
+    *,
+    seed: int,
+    size: int,
+    tier: DatasetTier,
+) -> str:
+    """Return a stable version unique to all materialization identity inputs."""
+    identity = json.dumps(
+        {
+            "adapter_name": spec.name,
+            "adapter_version": spec.version,
+            "seed": seed,
+            "size": size,
+            "source_revision": pin.revision,
+            "source_revision_digest": pin.revision_digest,
+            "tier": tier.value,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = _sha256_bytes(identity.encode("utf-8"))[:16]
+    return f"{spec.dataset_version}+materialized.{digest}"
+
+
 def _manifest(
     spec: AdapterSpec,
     pin: SourcePin,
@@ -219,7 +317,7 @@ def _manifest(
     return {
         "schema_version": "0.1",
         "name": spec.dataset_name,
-        "version": spec.dataset_version,
+        "version": materialization_version(spec, pin, seed=seed, size=size, tier=tier),
         "split": split,
         "license": spec.license,
         "pii_scrubbed": spec.pii_scrubbed,

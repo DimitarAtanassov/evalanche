@@ -20,8 +20,8 @@ from evalharness.judge.models import (
     Rubric,
 )
 from evalharness.judge.pairwise import (
-    bradley_terry_summary,
     build_pairwise_item,
+    pairwise_graph_summary,
     position_bias_rate,
     swap_consistency_rate,
 )
@@ -188,12 +188,11 @@ def run_pairwise(
         pairwise_items.append(item)
         items.append(item.model_dump(mode="json"))
 
-    bt = bradley_terry_summary(pairwise_items)
     summary = PairwiseSummary(
         n_pairs=len(pairwise_items),
         swap_consistency=swap_consistency_rate(pairwise_items),
         position_bias=position_bias_rate(pairwise_items),
-        bradley_terry=bt,
+        bradley_terry=pairwise_graph_summary(pairwise_items),
     )
     artifact = JudgmentArtifact(
         mode=JudgeMode.PAIRWISE,

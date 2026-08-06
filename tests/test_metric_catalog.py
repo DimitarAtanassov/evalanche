@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import math
+import warnings
 
 from evalharness.core.enums import FailureOutcome, TaskType
 from evalharness.core.models import Case, Generation, ScoringContext
 from evalharness.scoring.catalog import (
+    ClassificationMetric,
     JsonFieldF1Metric,
     RetrievalMetric,
     SquadMetric,
@@ -55,3 +57,22 @@ def test_retrieval_ndcg_and_short_list_semantics() -> None:
     assert score.value == 1.0
     assert score.detail["precision@5"] == 0.4
     assert score.detail["recall@5"] == 1.0
+
+
+def test_classification_aggregate_suppresses_expected_unseen_prediction_warning() -> None:
+    metric = ClassificationMetric()
+    context = ScoringContext("n")
+    scores = [
+        metric.score(
+            generation(output),
+            Case(f"case-{index}", TaskType.CLASSIFICATION, {}, expected_label="A"),
+            context,
+        )[0]
+        for index, output in enumerate(("A", "B"))
+    ]
+
+    with warnings.catch_warnings(record=True) as recorded:
+        aggregate = metric.aggregate(scores)
+
+    assert recorded == []
+    assert aggregate.value == 0.5

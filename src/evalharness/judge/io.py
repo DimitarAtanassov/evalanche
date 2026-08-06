@@ -8,7 +8,6 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from evalharness.hashing import canonical_json, sha256_hex
 from evalharness.judge.errors import JudgeError
 
 
@@ -31,11 +30,6 @@ def write_json(path: Path, payload: dict[str, Any] | BaseModel) -> None:
         json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
-
-
-def digest_payload(payload: dict[str, Any] | BaseModel) -> str:
-    data = payload.model_dump(mode="json") if isinstance(payload, BaseModel) else payload
-    return f"sha256:{sha256_hex(canonical_json(data))}"
 
 
 def load_jsonl_models[T: BaseModel](path: Path, model_type: type[T], *, error_code: str) -> list[T]:

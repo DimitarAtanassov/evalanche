@@ -7,7 +7,7 @@ contamination_risk: low
 content_sha256: f4a6c76c07a8d03cae73d5200da8fa018cb404ac446369eef886bc613a585b9e
 created_at: '2026-08-05'
 license: CC0-1.0
-name: synthetic-news
+name: phase4-synthetic-news
 pii_scrub_procedure: docs/datasets.md#privacy-and-pii
 pii_scrubbed: true
 schema_version: '0.1'
@@ -24,4 +24,4 @@ split: dev
 task_metrics:
 - classification
 tier: smoke
-version: 1.0.0
+version: 1.0.0+materialized.6890dec7fadb488e

@@ -31,6 +31,8 @@ class Provider(Protocol):
 
     def classify_error(self, exc: Exception) -> ErrorClass: ...
 
+    async def aclose(self) -> None: ...
+
 
 class Metric(Protocol):
     name: str

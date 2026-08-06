@@ -15,7 +15,7 @@ from evalharness.core.models import (
 
 _PLUS_ONE = re.compile(r"What is (\d+) plus one\?", re.IGNORECASE)
 
-MOCK_DIGEST = "mock-digest-phase1-poc-0001"
+MOCK_DIGEST = "mock-digest-poc-0001"
 MOCK_ADAPTER_VERSION = "mock-v1"
 
 

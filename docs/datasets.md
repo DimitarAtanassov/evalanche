@@ -18,16 +18,23 @@ revision_digest: sha256:<64 lowercase hex characters>
 canonical_url: https://example.invalid/canonical-snapshot
 ```
 
-The digest is checked before any output is written. The pin file is an
-operator-reviewed record, not a license grant. A rerun with the same source
-bytes, adapter version, seed, size, and tier emits identical case bytes and
-content hash.
+The digest is checked before any output is written. Revision must be nonempty,
+the digest must be `sha256:<64 lowercase hex>`, and the canonical URL must be
+absolute. The pin file is an operator-reviewed record, not a license grant.
+
+Materialized manifest versions have the form
+`<adapter-base-version>+materialized.<16-hex-digest>`. The digest covers adapter
+name and version, source revision and digest, seed, size, and tier. Therefore
+two materially different materializations cannot silently share
+`name@version`. A rerun with identical identity inputs emits the same version,
+case bytes, and content hash.
 
 Source records that exceed the published field bounds leave the sampling pool
-before sampling, so a corpus of long documents yields its publishable records
-instead of aborting the pack. When fewer in-bound records remain than the
-requested size, materialization fails with `SOURCE_TOO_SMALL` and reports both
-counts. Validation of the written pack remains the fail-closed gate.
+before sampling. SQuAD, PubMedQA, and FinQA context is never sliced or silently
+truncated because that could detach questions and answers from source
+semantics. When fewer in-bound records remain than the requested size,
+materialization fails with `SOURCE_TOO_SMALL` and reports both counts.
+Validation of the written pack remains the fail-closed gate.
 
 ## Manifest schema versions
 
@@ -128,44 +135,75 @@ digests are recorded in generated manifests.
 
 ### synthetic_qa
 
-Five original arithmetic and factual questions. Task: short QA. Metrics:
-`squad_f1`, `exact_match`. Contamination risk: low.
+- License: `CC0-1.0`.
+- Redistribution: repository-authored text may be committed.
+- Attribution: repository-authored synthetic fixture.
+- Source revision: `synthetic-v1`.
+- Task/metrics: short QA; `squad_f1`, `exact_match`.
+- Privacy: fictional bounded text reviewed under the procedure above.
 
 ### synthetic_news
 
-Five fictional news headlines and briefs. Task: label-only classification.
-Metric: `classification`. Contamination risk: low.
+- License: `CC0-1.0`.
+- Redistribution: repository-authored text may be committed.
+- Attribution: repository-authored synthetic fixture.
+- Source revision: `synthetic-v1`.
+- Task/metrics: label-only classification; `classification`.
+- Privacy: fictional bounded text reviewed under the procedure above.
 
 ### synthetic_healthcare
 
-Five fictional, non-clinical health-information questions with no patient data.
-Task: label-only classification. Metric: `classification`. Contamination risk:
-low.
+- License: `CC0-1.0`.
+- Redistribution: repository-authored text may be committed.
+- Attribution: repository-authored synthetic fixture.
+- Source revision: `synthetic-v1`.
+- Task/metrics: label-only classification; `classification`.
+- Privacy: fictional non-clinical text with no patient data.
 
 ### synthetic_finance
 
-Five fictional business calculations with no account or market data. Task:
-numeric QA. Metric: `numeric_assertion`. Contamination risk: low.
+- License: `CC0-1.0`.
+- Redistribution: repository-authored text may be committed.
+- Attribution: repository-authored synthetic fixture.
+- Source revision: `synthetic-v1`.
+- Task/metrics: numeric QA; `numeric_assertion`.
+- Privacy: fictional business data with no account or market data.
 
 ### synthetic_summarization
 
-Five original short notices from fictional organizations. Task: concise
-summarization. Metrics: `rouge_l`, `chrf_pp`. Contamination risk: low.
+- License: `CC0-1.0`.
+- Redistribution: repository-authored text may be committed.
+- Attribution: repository-authored synthetic fixture.
+- Source revision: `synthetic-v1`.
+- Task/metrics: concise summarization; `rouge_l`, `chrf_pp`.
+- Privacy: fictional bounded notices reviewed under the procedure above.
 
 ### synthetic_extraction
 
-Five original fictional purchase notices. Task: JSON extraction. Metrics:
-`json_validity`, `json_field_f1`. Contamination risk: low.
+- License: `CC0-1.0`.
+- Redistribution: repository-authored text may be committed.
+- Attribution: repository-authored synthetic fixture.
+- Source revision: `synthetic-v1`.
+- Task/metrics: JSON extraction; `json_validity`, `json_field_f1`.
+- Privacy: fictional purchase notices with no account identifiers.
 
 ### synthetic_retrieval
 
-Five original queries over fictional document titles and snippets. Task:
-retrieval. Metric: `retrieval_ndcg_10`. Contamination risk: low.
+- License: `CC0-1.0`.
+- Redistribution: repository-authored text may be committed.
+- Attribution: repository-authored synthetic fixture.
+- Source revision: `synthetic-v1`.
+- Task/metrics: retrieval; `retrieval_ndcg_10`.
+- Privacy: fictional bounded titles and snippets.
 
 ### synthetic_math
 
-Five original arithmetic word problems. Task: numeric QA. Metric:
-`numeric_assertion`. Contamination risk: low.
+- License: `CC0-1.0`.
+- Redistribution: repository-authored text may be committed.
+- Attribution: repository-authored synthetic fixture.
+- Source revision: `synthetic-v1`.
+- Task/metrics: numeric QA; `numeric_assertion`.
+- Privacy: fictional bounded arithmetic problems.
 
 ## External adapter cards
 
@@ -232,20 +270,31 @@ review upstream terms before use and must provide a digest pin.
   `rouge_l`, `chrf_pp`.
 - Contamination risk: high.
 
-### scifact
+### scifact_prejoined
 
-- Source/version: operator-pinned, prejoined local JSONL cases.
+- Source/version: operator-pinned, prejoined local Case JSONL.
+- Input shape: one harness Case object per line with `id`, `task_type:
+  retrieval`, `inputs.query`, `inputs.candidates`, `qrels`, and `slices`.
+  Candidate objects must already have the ids and bounded text required by the
+  retrieval template.
 - License/redistribution: not verified here; cache-only.
 - PII: scientific publication metadata; bounded publication controls apply.
 - Split/task/metric: operator-declared source split; retrieval;
   `retrieval_ndcg_10`.
 - Contamination risk: medium.
 
-### docred
+### docred_prejoined
 
-- Source/version: operator-pinned, pretransformed local JSONL cases.
+- Source/version: operator-pinned, prejoined local Case JSONL.
+- Input shape: one harness Case object per line with `id`, `task_type:
+  extraction`, task-ready `inputs`, `expected_json`, and `slices`. Entity and
+  relation joining must be completed before materialization.
 - License/redistribution: not verified here; cache-only.
 - PII: encyclopedic entity text may identify people; no committed text.
 - Split/task/metrics: operator-declared source split; extraction;
   `json_validity`, `json_field_f1`.
 - Contamination risk: high.
+
+These adapters do not parse native SciFact corpus/claims files or native DocRED
+documents. Native source adapters are deferred because the repository has no
+accepted join, negative-sampling, or relation-normalization contract.

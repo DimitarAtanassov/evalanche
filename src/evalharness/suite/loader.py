@@ -10,6 +10,8 @@ from typing import Literal, cast
 import yaml
 from pydantic import ValidationError
 
+from evalharness.hashing import calibration_body_digest
+from evalharness.judge.models import CalibrationArtifact
 from evalharness.suite.models import (
     ArtifactReference,
     CompareArtifact,
@@ -95,8 +97,20 @@ def _load_manifest(path: Path) -> SuiteManifest:
 
 
 def _artifact_path(base: Path, declared: str) -> Path:
-    path = Path(declared)
-    return path if path.is_absolute() else base / path
+    """Resolve a declared artifact path, refusing anything outside the manifest tree.
+
+    A manifest is untrusted input, so ``../`` traversal or an absolute path would
+    otherwise let it hash and publish files from anywhere on the host.
+    """
+    resolved = (base / declared).resolve()
+    try:
+        resolved.relative_to(base)
+    except ValueError:
+        raise SuiteValidationError(
+            "ARTIFACT_OUTSIDE_SUITE",
+            f"{declared!r} resolves outside the suite directory {base}",
+        ) from None
+    return resolved
 
 
 def _require_fields(
@@ -112,23 +126,33 @@ def _require_fields(
         )
 
 
+def _validate_calibration(payload: dict[str, JsonValue], path: Path) -> None:
+    """Hold suite calibrations to the same contract ``attach_calibration`` enforces.
+
+    Field-presence checks let a self-consistent payload without ``judgment_digest``
+    publish a passing gate the attach path would refuse, so the model is the gate.
+    """
+    try:
+        CalibrationArtifact.model_validate(payload)
+    except ValidationError as exc:
+        raise SuiteValidationError("INVALID_ARTIFACT", f"{path}: {exc}") from exc
+    if payload["calibration_digest"] != calibration_body_digest(payload):
+        raise SuiteValidationError(
+            "INVALID_ARTIFACT",
+            f"{path}: calibration_digest does not match artifact body",
+        )
+
+
 def _validate_supplement(
     payload: dict[str, JsonValue],
     path: Path,
     kind: Literal["calibration", "judge", "rag"],
 ) -> None:
     _require_schema(payload, PHASE_6_SCHEMA_VERSION, path)
+    if kind == "calibration":
+        _validate_calibration(payload, path)
+        return
     required = {
-        "calibration": (
-            "calibration_digest",
-            "rubric_name",
-            "rubric_version",
-            "holdout",
-            "threshold",
-            "family_separation_ok",
-            "gating_allowed",
-            "plain_language",
-        ),
         "judge": (
             "mode",
             "rubric_name",
@@ -147,14 +171,6 @@ def _validate_supplement(
         ),
     }[kind]
     _require_fields(payload, required, path)
-    if kind == "calibration":
-        body = {key: value for key, value in payload.items() if key != "calibration_digest"}
-        expected = f"sha256:{_digest(body)}"
-        if payload["calibration_digest"] != expected:
-            raise SuiteValidationError(
-                "INVALID_ARTIFACT",
-                f"{path}: calibration_digest does not match artifact body",
-            )
     if kind == "rag" and payload["gating_allowed"] is not False:
         raise SuiteValidationError(
             "INVALID_ARTIFACT",

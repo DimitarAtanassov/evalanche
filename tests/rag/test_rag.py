@@ -1,4 +1,4 @@
-"""Phase 6 RAG evidence artifact tests."""
+"""RAG evidence artifact tests."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from evalharness.cli import app
 from evalharness.rag import RagError, build_rag_evidence
 from evalharness.rag.claims import split_claims
 from evalharness.rag.context import context_precision_recall
-from evalharness.rag.text import CLAIM_TEXT_LIMIT
+from evalharness.rag.text import CLAIM_TEXT_LIMIT, EVIDENCE_SPAN_LIMIT
 
 ROOT = Path(__file__).parents[2]
 RAG = ROOT / "fixtures" / "rag"
@@ -31,12 +31,30 @@ def test_rag_evidence_nli_unavailable_by_default(tmp_path: Path) -> None:
     assert artifact["gating_allowed"] is False
     assert artifact["faithfulness"]["status"] == "unavailable"
     assert artifact["faithfulness"]["reason"] == "NLI_UNAVAILABLE"
+    assert artifact["faithfulness"]["aggregate"] == {"unsupported_claim_rate": None, "n": 0}
     assert artifact["retrieval"]["status"] == "ok"
     assert artifact["retrieval"]["aggregate"]["value"] == 0.42
     assert artifact["context"]["precision"]["status"] == "ok"
     assert artifact["citations"]["attribution"]["status"] == "ok"
     assert artifact["deferred"]["answer_grounded_context"]["status"] == "deferred"
     assert artifact["deferred"]["nli_verified_citations"]["reason"] == "ADR_004_RAG_METHODS"
+
+
+def test_rag_claims_carry_no_verdict_when_nli_is_unavailable(tmp_path: Path) -> None:
+    """Without NLI, every published claim stays unadjudicated: no verdict, no spans."""
+    artifact = build_rag_evidence(
+        report_path=RAG / "report.json",
+        evidence_path=RAG / "evidence.jsonl",
+        output_path=tmp_path / "rag_evidence.json",
+    )
+
+    claims = [
+        claim for example in artifact["faithfulness"]["examples"] for claim in example["claims"]
+    ]
+    assert claims
+    assert all(claim["supported"] is None for claim in claims)
+    assert all(claim["evidence_spans"] == [] for claim in claims)
+    assert all("contradicted" not in claim for claim in claims)
 
 
 def test_rag_evidence_with_mock_nli_separates_failures(tmp_path: Path) -> None:
@@ -65,8 +83,14 @@ def test_rag_evidence_with_mock_nli_separates_failures(tmp_path: Path) -> None:
     expected = next(
         row for row in report["metric_aggregates"] if row["metric"] == "retrieval_ndcg_10"
     )
-    assert artifact["retrieval"]["aggregate"]["value"] == expected["value"]
-    assert artifact["retrieval"]["aggregate"]["n"] == expected["n"]
+    assert artifact["retrieval"]["metric"] == "retrieval_ndcg_10"
+    assert artifact["retrieval"]["metric_version"] == expected["version"]
+    assert artifact["retrieval"]["aggregate"] == {
+        "value": expected["value"],
+        "n": expected["n"],
+        "ci_low": expected["ci_low"],
+        "ci_high": expected["ci_high"],
+    }
 
 
 def test_rag_retrieval_missing_while_faithfulness_ok(tmp_path: Path) -> None:
@@ -133,6 +157,35 @@ def test_rag_context_qrels_missing_when_no_case_supplies_qrels(tmp_path: Path) -
     assert artifact["retrieval"]["status"] == "ok"
 
 
+def test_citation_attribution_is_unavailable_when_no_case_cites_anything(tmp_path: Path) -> None:
+    """Zero citations must publish unavailable, never a vacuous 100% attribution."""
+    evidence_lines = []
+    for line in (RAG / "evidence.jsonl").read_text(encoding="utf-8").splitlines():
+        case = json.loads(line)
+        case.pop("citations", None)
+        evidence_lines.append(json.dumps(case))
+    evidence_path = tmp_path / "evidence-no-citations.jsonl"
+    evidence_path.write_text("\n".join(evidence_lines) + "\n", encoding="utf-8")
+
+    artifact = build_rag_evidence(
+        report_path=RAG / "report.json",
+        evidence_path=evidence_path,
+        output_path=tmp_path / "rag_evidence.json",
+        nli_provider="mock",
+        nli_model="mock-nli",
+        nli_responses_path=RAG / "mock-nli-responses.jsonl",
+    )
+
+    assert artifact["citations"]["attribution"] == {
+        "status": "unavailable",
+        "value": None,
+        "n": 0,
+        "reason": "CITATIONS_MISSING",
+    }
+    assert artifact["citations"]["missing_support_examples"] == []
+    assert artifact["faithfulness"]["status"] == "ok"
+
+
 def test_published_rag_text_is_bounded_and_omits_full_source_docs(tmp_path: Path) -> None:
     long_claim = ("word " * 80).strip() + "."
     long_context = ("source " * 80).strip() + "."
@@ -181,14 +234,17 @@ def test_published_rag_text_is_bounded_and_omits_full_source_docs(tmp_path: Path
     assert long_context not in serialized
     assert long_claim not in serialized
     claim_text = artifact["faithfulness"]["examples"][0]["claims"][0]["text"]
-    assert len(claim_text) <= CLAIM_TEXT_LIMIT + 1
+    assert len(claim_text) == CLAIM_TEXT_LIMIT
     assert claim_text.endswith("…")
+    assert claim_text[:-1] == long_claim[: CLAIM_TEXT_LIMIT - 1]
     span_text = artifact["faithfulness"]["examples"][0]["claims"][0]["evidence_spans"][0]["text"]
-    assert len(span_text) <= CLAIM_TEXT_LIMIT + 1
+    assert len(span_text) == EVIDENCE_SPAN_LIMIT
     assert span_text.endswith("…")
+    assert span_text[:-1] == long_context[: EVIDENCE_SPAN_LIMIT - 1]
     answer = artifact["bounded_examples"][0]["answer_text"]
-    assert len(answer) <= CLAIM_TEXT_LIMIT + 1
+    assert len(answer) == CLAIM_TEXT_LIMIT
     assert answer.endswith("…")
+    assert answer[:-1] == long_claim[: CLAIM_TEXT_LIMIT - 1]
 
 
 def test_nli_mock_response_missing_on_incomplete_fixture(tmp_path: Path) -> None:
@@ -229,7 +285,8 @@ def test_claim_split_respects_abbreviations_and_bounds() -> None:
     assert claims[0].startswith("Dr. Smith")
     long = "x" * 500
     truncated, _ = split_claims(long)
-    assert len(truncated[0]) <= CLAIM_TEXT_LIMIT + 1
+    assert len(truncated[0]) == CLAIM_TEXT_LIMIT
+    assert truncated[0] == "x" * (CLAIM_TEXT_LIMIT - 1) + "…"
 
 
 def test_context_recall_counts_each_relevant_document_once() -> None:

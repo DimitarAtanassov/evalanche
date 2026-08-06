@@ -7,7 +7,7 @@ contamination_risk: low
 content_sha256: ccf1b0cd46147dc2d563f481acc1b197d31340ae716525f5693c95cd1113760a
 created_at: '2026-08-05'
 license: CC0-1.0
-name: synthetic-extraction
+name: phase4-synthetic-extraction
 pii_scrub_procedure: docs/datasets.md#privacy-and-pii
 pii_scrubbed: true
 schema_version: '0.1'
@@ -25,4 +25,4 @@ task_metrics:
 - json_validity
 - json_field_f1
 tier: smoke
-version: 1.0.0
+version: 1.0.0+materialized.bd47ceb14817011b

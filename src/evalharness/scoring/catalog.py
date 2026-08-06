@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import warnings
 from collections import Counter
 from typing import Any
 
@@ -21,6 +22,16 @@ from sklearn.metrics import (
     matthews_corrcoef,
     precision_recall_fscore_support,
 )
+
+try:
+    from rouge_score import rouge_scorer as _rouge_scorer
+except ImportError:  # pragma: no cover - optional path when rouge_score is unavailable
+    _rouge_scorer = None
+
+try:
+    from nltk.translate.meteor_score import meteor_score as _meteor_score
+except ImportError:  # pragma: no cover - optional path when nltk is unavailable
+    _meteor_score = None
 
 from evalharness.core.enums import Requirement, TaskType
 from evalharness.core.models import AggregateValue, Case, Generation, ScoreValue, ScoringContext
@@ -248,10 +259,17 @@ class ClassificationMetric(ScalarMetric):
             if expected
             else (0.0, 0.0, 0.0, None)
         )
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="y_pred contains classes not in y_true",
+                category=UserWarning,
+            )
+            balanced_accuracy = (
+                float(balanced_accuracy_score(expected, predicted)) if expected else 0.0
+            )
         detail = {
-            "balanced_accuracy": float(balanced_accuracy_score(expected, predicted))
-            if expected
-            else 0.0,
+            "balanced_accuracy": balanced_accuracy,
             "macro_f1": float(f1_score(expected, predicted, average="macro")) if expected else 0.0,
             "micro_f1": float(f1_score(expected, predicted, average="micro")) if expected else 0.0,
             "weighted_precision": float(precision),
@@ -328,10 +346,8 @@ class RougeLMetric(ScalarMetric):
         reference = _reference(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}
-        try:
-            from rouge_score import rouge_scorer
-
-            scores = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL", "rougeLsum"]).score(
+        if _rouge_scorer is not None:
+            scores = _rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL", "rougeLsum"]).score(
                 reference, gen.output
             )
             detail = {
@@ -343,10 +359,8 @@ class RougeLMetric(ScalarMetric):
                 for name, value in scores.items()
             }
             return float(scores["rougeL"].fmeasure), detail
-        except ImportError:
-            # Python 3.14 can block NLTK's regex import from unsafe paths.
-            # The deterministic implementation below preserves reportability.
-            pass
+        # Deterministic fallback when rouge_score cannot be imported (e.g. NLTK
+        # blocked on some Python 3.14 paths).
         predicted = _tokens(gen.output)
         expected = _tokens(reference)
         fallback_detail: dict[str, dict[str, float]] = {}
@@ -451,12 +465,17 @@ class MeteorMetric(ScalarMetric):
         reference = _reference(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}
+        if _meteor_score is None:
+            return None, {
+                "reason": "nltk_resource_unavailable",
+                "language": "en",
+                "resource": "wordnet",
+                "error": "nltk.translate.meteor_score is not installed",
+            }
         try:
-            from nltk.translate.meteor_score import meteor_score
-
-            value = float(meteor_score([_tokens(reference)], _tokens(gen.output)))
+            value = float(_meteor_score([_tokens(reference)], _tokens(gen.output)))
             return value, {"language": "en", "resources": ["wordnet"]}
-        except (ImportError, LookupError) as exc:
+        except LookupError as exc:
             return None, {
                 "reason": "nltk_resource_unavailable",
                 "language": "en",

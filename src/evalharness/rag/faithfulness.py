@@ -47,8 +47,14 @@ def build_faithfulness(
     cases: list[dict[str, Any]],
     *,
     nli_labels: dict[tuple[str, int, str], NliLabel] | None,
+    missing_label_code: str,
 ) -> tuple[dict[str, Any], dict[tuple[str, int, str], NliLabel], list[dict[str, Any]]]:
-    """Build faithfulness section; unavailable when NLI labels are absent."""
+    """Build faithfulness section; unavailable when NLI labels are absent.
+
+    ``missing_label_code`` is the caller's error code for a requested
+    ``(case, claim, doc)`` that has no label, because an incomplete mock fixture
+    and an incomplete live classification are different operator problems.
+    """
     claim_parse_notes: list[dict[str, Any]] = []
     examples: list[dict[str, Any]] = []
     used_labels: dict[tuple[str, int, str], NliLabel] = {}
@@ -120,7 +126,7 @@ def build_faithfulness(
                 label = nli_labels.get(key)
                 if label is None:
                     raise RagError(
-                        "MOCK_RESPONSE_MISSING",
+                        missing_label_code,
                         f"missing NLI label for case_id={case_id} "
                         f"claim_index={claim_index} doc_id={doc_id}",
                     )

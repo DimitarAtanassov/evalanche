@@ -1,7 +1,7 @@
 content_sha256: d9d693b061e9cd75da2c5ce3af475333e6328c6a1fd961edc821417dbb241dcc
 created_at: '2026-08-05'
 license: CC0-1.0
-name: synthetic-qa
+name: synthetic-qa-large
 pii_scrubbed: true
 slices:
 - difficulty

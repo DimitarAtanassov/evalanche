@@ -157,11 +157,18 @@ class BradleyTerryRefused(StrictModel):
     isolated_models: list[str]
 
 
-class BradleyTerryAccepted(StrictModel):
-    status: Literal["ok"] = "ok"
+class PairwiseWinRates(StrictModel):
+    """Connected pairwise graph summarised by raw win rates.
+
+    Phase 6 does not fit Bradley-Terry strengths, so ``status`` and ``win_rates``
+    name what the numbers actually are. A consumer that needs identifiable BT
+    strengths must not read these as such.
+    """
+
+    status: Literal["win_rates_only"] = "win_rates_only"
     n_models: int
     n_edges: int
-    scores: dict[str, float]
+    win_rates: dict[str, float]
     component_sizes: list[int] = Field(default_factory=list)
     isolated_models: list[str] = Field(default_factory=list)
 
@@ -170,7 +177,7 @@ class PairwiseSummary(StrictModel):
     n_pairs: int
     swap_consistency: float | None
     position_bias: float | None
-    bradley_terry: BradleyTerryAccepted | BradleyTerryRefused | None
+    bradley_terry: PairwiseWinRates | BradleyTerryRefused | None
 
 
 class LatencySummary(StrictModel):

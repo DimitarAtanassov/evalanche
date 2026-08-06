@@ -40,7 +40,7 @@ def main() -> None:
     content_sha256 = sha256_hex("\n".join(lines).encode("utf-8"))
 
     manifest = {
-        "name": "synthetic-qa",
+        "name": "synthetic-qa-large",
         "version": "1.0.0",
         "split": "dev",
         "license": "CC0-1.0",

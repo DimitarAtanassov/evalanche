@@ -20,6 +20,7 @@ from typing import Any, TextIO, cast
 
 import structlog
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor, SpanExporter
@@ -92,13 +93,20 @@ _SECRET_PATTERNS = (
 
 
 def sanitize_text(value: str, *, max_chars: int = 240) -> str:
-    """Single-line, bounded text with common credential forms redacted."""
+    """Single-line text with credential forms redacted, at most ``max_chars`` long.
+
+    The published-text contracts (judge reasoning 1000, RAG claims/spans 280,
+    suite galleries 280) count the ellipsis inside the cap, so the truncation
+    marker replaces the last kept character rather than extending past it.
+    """
     cleaned = " ".join(value.split())
     for pattern in _SECRET_PATTERNS:
         cleaned = pattern.sub(r"\1[REDACTED]", cleaned)
     if len(cleaned) <= max_chars:
         return cleaned
-    return cleaned[:max_chars] + "…"
+    if max_chars <= 0:
+        return ""
+    return cleaned[: max_chars - 1] + "…"
 
 
 def payload_summary(value: str | None) -> dict[str, Any]:
@@ -172,8 +180,6 @@ def setup_otel() -> Tracer:
     if settings.otel_enabled:
         exporter: SpanExporter
         if settings.otel_exporter_otlp_endpoint:
-            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-
             exporter = OTLPSpanExporter(endpoint=settings.otel_exporter_otlp_endpoint)
             provider.add_span_processor(BatchSpanProcessor(exporter))
         else:

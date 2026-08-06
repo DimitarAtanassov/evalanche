@@ -2,13 +2,13 @@
   "schema_version": "2.1",
   "run_id": "00000000-0000-4000-8000-0000000000c1",
   "run_status": "completed",
-  "config_sha256": "f9c5bc7f8e2a01487dc0d99dc7710d59c5ef1ab48ce09aaf5d45511bcc12b2c6",
-  "model_digest": "mock-digest-phase1-poc-0001",
+  "config_sha256": "5816d4cf4a303f643bce6ffb3384a4c46724d6d79a51389d938e3ee8cd754882",
+  "model_digest": "mock-digest-poc-0001",
   "dataset_sha256": "c3dbdeaf2ef697ad3fcbddd314759c652ffdcb624d13f5177fea639240a6681a",
   "model": {
     "provider": "mock",
     "model": "mock-qa",
-    "resolved_version": "mock-digest-phase1-poc-0001",
+    "resolved_version": "mock-digest-poc-0001",
     "quantization": null,
     "params_b": null,
     "context_window": null,
@@ -23,7 +23,7 @@
     }
   },
   "dataset": {
-    "name": "synthetic-qa",
+    "name": "synthetic-qa-sample",
     "version": "1.0.0",
     "split": "dev",
     "content_sha256": "c3dbdeaf2ef697ad3fcbddd314759c652ffdcb624d13f5177fea639240a6681a",
@@ -55,6 +55,7 @@
   "coverage_floor": 0.98,
   "publishable": true,
   "primary_metric": "exact_match",
+  "headline_kind": "pass_rate",
   "pass_rate": 1.0,
   "pass_rate_n": 5,
   "pass_rate_ci": {
@@ -141,7 +142,7 @@
       "metric_value": 1.0,
       "passed": true,
       "latency_ms": 5.0,
-      "trace_id": "4a58d89e4acf6afa2837c750ec1aa511"
+      "trace_id": "88dd4e2c0da11c55342e0207c3378d93"
     },
     {
       "case_id": "case-00001",
@@ -159,7 +160,7 @@
       "metric_value": 1.0,
       "passed": true,
       "latency_ms": 5.0,
-      "trace_id": "4a58d89e4acf6afa2837c750ec1aa511"
+      "trace_id": "88dd4e2c0da11c55342e0207c3378d93"
     },
     {
       "case_id": "case-00002",
@@ -177,7 +178,7 @@
       "metric_value": 1.0,
       "passed": true,
       "latency_ms": 5.0,
-      "trace_id": "4a58d89e4acf6afa2837c750ec1aa511"
+      "trace_id": "88dd4e2c0da11c55342e0207c3378d93"
     },
     {
       "case_id": "case-00003",
@@ -195,7 +196,7 @@
       "metric_value": 1.0,
       "passed": true,
       "latency_ms": 5.0,
-      "trace_id": "4a58d89e4acf6afa2837c750ec1aa511"
+      "trace_id": "88dd4e2c0da11c55342e0207c3378d93"
     },
     {
       "case_id": "case-00004",
@@ -213,7 +214,7 @@
       "metric_value": 1.0,
       "passed": true,
       "latency_ms": 5.0,
-      "trace_id": "4a58d89e4acf6afa2837c750ec1aa511"
+      "trace_id": "88dd4e2c0da11c55342e0207c3378d93"
     }
   ],
   "cost_usd_total": 0.0,

@@ -51,6 +51,13 @@ def _squad_source(*articles: dict[str, object]) -> str:
     return json.dumps({"data": list(articles)})
 
 
+def test_prejoined_adapters_do_not_claim_native_source_parsing() -> None:
+    assert "scifact" not in ADAPTERS
+    assert "docred" not in ADAPTERS
+    assert ADAPTERS["scifact_prejoined"].dataset_name == "scifact-prejoined"
+    assert ADAPTERS["docred_prejoined"].dataset_name == "docred-prejoined"
+
+
 def test_squad_pin_materialize_succeeds_outside_fixtures(tmp_path: Path) -> None:
     source = tmp_path / "dev-v1.1.json"
     source.write_text(
@@ -178,6 +185,40 @@ def test_pubmedqa_source_of_only_oversize_contexts_fails_closed(tmp_path: Path) 
     assert not output.exists()
 
 
+def test_pubmedqa_source_shaped_snapshot_materializes_without_truncation(tmp_path: Path) -> None:
+    source = tmp_path / "pubmedqa.json"
+    records = {
+        f"pmqa-{index}": {
+            "QUESTION": f"Is claim {index} supported?",
+            "CONTEXT": [f"Abstract sentence {index}.", "A second sentence."],
+            "final_decision": "yes",
+        }
+        for index in range(5)
+    }
+    source.write_text(json.dumps(records), encoding="utf-8")
+    _write_pin(
+        source,
+        revision="operator-pinned",
+        canonical_url="https://example.invalid/pubmedqa.json",
+    )
+    output = tmp_path / "cache" / "pubmedqa-smoke"
+
+    materialize_dataset(
+        adapter_name="pubmedqa",
+        source=source,
+        output=output,
+        seed=42,
+        size=5,
+        tier=DatasetTier.SMOKE,
+    )
+
+    bundle = load_dataset(output)
+    assert validate_dataset(bundle).valid
+    assert {str(case.inputs["context"]) for case in bundle.cases} == {
+        f"Abstract sentence {index}.\nA second sentence." for index in range(5)
+    }
+
+
 def test_finqa_source_of_only_oversize_contexts_fails_closed(tmp_path: Path) -> None:
     source = tmp_path / "finqa.json"
     records = [
@@ -210,6 +251,45 @@ def test_finqa_source_of_only_oversize_contexts_fails_closed(tmp_path: Path) -> 
 
     assert "0 of 5 source records" in str(exc_info.value)
     assert not output.exists()
+
+
+def test_finqa_source_shaped_snapshot_materializes_without_truncation(tmp_path: Path) -> None:
+    source = tmp_path / "finqa.json"
+    records = [
+        {
+            "id": f"finqa-{index}",
+            "pre_text": [f"Opening statement {index}."],
+            "post_text": ["Closing statement."],
+            "table": [["Year", "Revenue"], ["2025", str(index)]],
+            "qa": {"question": f"What is revenue {index}?", "answer": str(index)},
+        }
+        for index in range(5)
+    ]
+    source.write_text(json.dumps(records), encoding="utf-8")
+    _write_pin(
+        source,
+        revision="operator-pinned",
+        canonical_url="https://example.invalid/finqa.json",
+    )
+    output = tmp_path / "cache" / "finqa-smoke"
+
+    materialize_dataset(
+        adapter_name="finqa",
+        source=source,
+        output=output,
+        seed=42,
+        size=5,
+        tier=DatasetTier.SMOKE,
+    )
+
+    bundle = load_dataset(output)
+    assert validate_dataset(bundle).valid
+    assert {str(case.inputs["context"]) for case in bundle.cases} == {
+        f"Opening statement {index}.\nClosing statement." for index in range(5)
+    }
+    assert {case.inputs["table"][1][1] for case in bundle.cases} == {
+        str(index) for index in range(5)
+    }
 
 
 def test_summaries_drops_oversize_articles_and_references(tmp_path: Path) -> None:

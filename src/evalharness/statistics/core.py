@@ -33,6 +33,9 @@ def bca_bootstrap(
     if data.size < 2:
         value = float(statistic(data)) if data.size else 0.0
         return value, value
+    if np.all(data == data[0]):
+        value = float(statistic(data))
+        return value, value
     result = stats.bootstrap(
         (data,),
         statistic,

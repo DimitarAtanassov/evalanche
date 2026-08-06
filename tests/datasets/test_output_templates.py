@@ -1,4 +1,4 @@
-"""Constrained output templates for Phase 4 task shapes."""
+"""Constrained output templates for task shapes."""
 
 from pathlib import Path
 

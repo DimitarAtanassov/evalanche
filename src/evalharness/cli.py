@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import uuid
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from evalharness.cli_progress import PipelineProgress
 from evalharness.config import get_settings
 from evalharness.core.enums import FailureOutcome, TaskType
 from evalharness.core.models import Case, Generation
+from evalharness.core.protocols import Provider
 from evalharness.datasets import (
     DatasetCaseError,
     DatasetManifestError,
@@ -27,8 +29,14 @@ from evalharness.datasets import (
 )
 from evalharness.execution.executor import Executor
 from evalharness.hashing import config_hash, sha256_hex
-from evalharness.judge import JudgeError, attach_calibration, run_judgment, validate_calibration
-from evalharness.judge.models import JudgeMode
+from evalharness.judge import (
+    JudgeError,
+    attach_calibration,
+    run_judgment,
+    run_live_judgment,
+    validate_calibration,
+)
+from evalharness.judge.models import JudgeMode, JudgmentArtifact
 from evalharness.observability import (
     StageTimer,
     exception_summary,
@@ -36,9 +44,10 @@ from evalharness.observability import (
     setup_logging,
     setup_otel,
 )
+from evalharness.providers.call_policy import ProviderCallPolicy
 from evalharness.providers.config import OllamaConfig, OpenAICompatibleConfig
 from evalharness.providers.registry import create_provider, load_provider
-from evalharness.rag import RagError, build_rag_evidence
+from evalharness.rag import RagError, build_live_rag_evidence, build_rag_evidence
 from evalharness.reporting.report import PRIMARY_METRIC, write_report
 from evalharness.scoring.calibration import calibrate_threshold
 from evalharness.scoring.engine import ScoringEngine
@@ -47,6 +56,7 @@ from evalharness.store.db import init_db, session_scope
 from evalharness.store.models import CaseRow, GenerationRow, ScoreRow
 from evalharness.store.repository import RunRepository
 from evalharness.suite import SuiteValidationError, load_suite, write_suite_artifacts
+from tools.datasets import MaterializationError, materialize_dataset
 
 app = typer.Typer(no_args_is_help=True, help="evalanche — reproducible LLM evaluation harness")
 runs_app = typer.Typer(no_args_is_help=True)
@@ -61,6 +71,11 @@ app.add_typer(judge_app, name="judge")
 app.add_typer(rag_app, name="rag")
 console = Console()
 logger = get_logger(__name__)
+
+
+def _emit_json(payload: object) -> None:
+    """Write machine JSON without Rich rendering or terminal wrapping."""
+    typer.echo(json.dumps(payload, sort_keys=True, allow_nan=False), file=sys.stdout)
 
 
 @app.callback()
@@ -80,9 +95,7 @@ def power(
     sample_size = required_sample_size(
         baseline_rate, minimum_detectable_effect, alpha=alpha, power=desired_power
     )
-    console.print(
-        json.dumps({"sample_size_per_arm": sample_size, "power": desired_power}, indent=2)
-    )
+    _emit_json({"sample_size_per_arm": sample_size, "power": desired_power})
 
 
 @app.command("score")
@@ -127,21 +140,19 @@ def score_file(
             trace_id=None,
         )
         scores = engine.score_one(generation, case, names)
-        console.print(
-            json.dumps(
-                {
-                    "id": case.external_id,
-                    "scores": [
-                        {
-                            "metric": value.metric_name,
-                            "value": value.value,
-                            "passed": value.passed,
-                            "detail": value.detail,
-                        }
-                        for value in scores
-                    ],
-                }
-            )
+        _emit_json(
+            {
+                "id": case.external_id,
+                "scores": [
+                    {
+                        "metric": value.metric_name,
+                        "value": value.value,
+                        "passed": value.passed,
+                        "detail": value.detail,
+                    }
+                    for value in scores
+                ],
+            }
         )
 
 
@@ -160,7 +171,7 @@ def runs_rescore(
                 progress=pipeline_progress,
             )
         )
-    console.print(json.dumps({"run_id": run_id, "scores_processed": count, "inference_calls": 0}))
+    _emit_json({"run_id": run_id, "scores_processed": count, "inference_calls": 0})
 
 
 @runs_app.command("compare")
@@ -180,10 +191,10 @@ def runs_compare(
             allow_compatible,
         )
     )
-    payload = json.dumps(artifact, indent=2)
+    payload = json.dumps(artifact, indent=2, allow_nan=False)
     if output:
         output.write_text(payload, encoding="utf-8")
-    console.print(payload)
+    _emit_json(artifact)
 
 
 async def _compare_runs_async(
@@ -269,7 +280,7 @@ def calibrate(inputs: Path = typer.Argument(..., help="JSONL with label and scor
         [bool(row["label"]) for row in rows],
         [float(row["score"]) for row in rows],
     )
-    console.print(json.dumps(result, indent=2))
+    _emit_json(result)
 
 
 @app.command("dataset-validate")
@@ -315,8 +326,6 @@ def dataset_materialize(
     check_deterministic: bool = typer.Option(False, "--check-deterministic"),
 ) -> None:
     """Materialize a pinned local snapshot without network access."""
-    from tools.datasets import MaterializationError, materialize_dataset
-
     try:
         materialize_dataset(
             adapter_name=adapter,
@@ -334,27 +343,15 @@ def dataset_materialize(
         console.print(f"[red]IO_ERROR[/red] {exc}")
         raise typer.Exit(2) from exc
     bundle = load_dataset(output)
-    console.print(
-        json.dumps(
-            {
-                "adapter": adapter,
-                "dataset": bundle.manifest.name,
-                "cases": len(bundle.cases),
-                "content_sha256": bundle.content_sha256,
-                "output": str(output),
-            },
-            sort_keys=True,
-        )
+    _emit_json(
+        {
+            "adapter": adapter,
+            "dataset": bundle.manifest.name,
+            "cases": len(bundle.cases),
+            "content_sha256": bundle.content_sha256,
+            "output": str(output),
+        }
     )
-
-
-def _emit_json(payload: dict[str, object]) -> None:
-    # Rich wraps at console width, which corrupts JSON piped into other tools.
-    console.print(json.dumps(payload, sort_keys=True), soft_wrap=True)
-
-
-def _emit_suite_json(payload: dict[str, object]) -> None:
-    _emit_json(payload)
 
 
 @suite_app.command("validate")
@@ -367,7 +364,7 @@ def suite_validate(
     except SuiteValidationError as exc:
         console.print(f"[red]{exc.code}[/red] {exc}")
         raise typer.Exit(1) from exc
-    _emit_suite_json(
+    _emit_json(
         {
             "schema_version": validated.manifest.schema_version,
             "name": validated.manifest.name,
@@ -392,13 +389,67 @@ def suite_build(
     except OSError as exc:
         console.print(f"[red]IO_ERROR[/red] {exc}")
         raise typer.Exit(2) from exc
-    _emit_suite_json(
+    _emit_json(
         {
             "suite_digest": report.suite_digest,
             "members": len(report.members),
             "output": str(output),
         }
     )
+
+
+def _create_scoring_provider(
+    provider_name: str,
+    *,
+    concurrency: int,
+    rpm: int,
+    tpm: int,
+) -> Provider:
+    settings = get_settings()
+    if provider_name == "ollama":
+        return create_provider(
+            OllamaConfig(
+                base_url=settings.ollama_base_url,
+                concurrency=concurrency,
+                rpm=rpm,
+                tpm=tpm,
+            )
+        )
+    if provider_name == "openai_compatible":
+        if (
+            settings.openai_compatible_base_url is None
+            or settings.openai_compatible_model_revision is None
+        ):
+            raise ValueError(
+                "OPENAI_COMPATIBLE_BASE_URL and OPENAI_COMPATIBLE_MODEL_REVISION are required"
+            )
+        return create_provider(
+            OpenAICompatibleConfig(
+                base_url=settings.openai_compatible_base_url,
+                api_key=settings.openai_compatible_api_key,
+                model_revision=settings.openai_compatible_model_revision,
+                concurrency=concurrency,
+                rpm=rpm,
+                tpm=tpm,
+            )
+        )
+    raise ValueError(
+        f"live scoring provider must be ollama or openai_compatible, got {provider_name!r}"
+    )
+
+
+def _provider_call_policy(request_timeout_s: float | None) -> ProviderCallPolicy:
+    settings = get_settings()
+    return ProviderCallPolicy(
+        request_timeout_s=request_timeout_s or settings.default_request_timeout_s,
+        max_retries=settings.default_max_retries,
+        retry_base_s=settings.default_retry_base_s,
+        retry_cap_s=settings.default_retry_cap_s,
+    )
+
+
+async def _close_provider(provider: Provider) -> None:
+    await provider.aclose()
 
 
 @judge_app.command("run")
@@ -414,25 +465,64 @@ def judge_run(
     responses: Path | None = typer.Option(None, "--responses"),
     seed: int = typer.Option(..., "--seed"),
     output: Path = typer.Option(..., "--output"),
+    concurrency: int = typer.Option(2, "--concurrency", min=1),
+    request_timeout_s: float | None = typer.Option(
+        None,
+        "--request-timeout",
+        min=0.1,
+        help="Per-provider-call timeout in seconds",
+    ),
 ) -> None:
     """Run pointwise or pairwise judging into judgment.json (always informational)."""
     setup_logging()
     try:
-        artifact = run_judgment(
-            mode=mode,
-            rubric_path=rubric,
-            candidates_path=candidates,
-            pairs_path=pairs,
+        if provider == "mock":
+            artifact = run_judgment(
+                mode=mode,
+                rubric_path=rubric,
+                candidates_path=candidates,
+                pairs_path=pairs,
+                provider=provider,
+                model=model,
+                judge_family=judge_family,
+                candidate_family=candidate_family,
+                responses_path=responses,
+                seed=seed,
+                output_path=output,
+            )
+        else:
+            if responses is not None:
+                raise JudgeError(
+                    "INVALID_PROVIDER_CONFIG",
+                    "--responses is only valid with --provider mock",
+                )
+            artifact = asyncio.run(
+                _judge_run_live_async(
+                    mode=mode,
+                    rubric=rubric,
+                    candidates=candidates,
+                    pairs=pairs,
+                    provider_name=provider,
+                    model=model,
+                    judge_family=judge_family,
+                    candidate_family=candidate_family,
+                    seed=seed,
+                    output=output,
+                    concurrency=concurrency,
+                    request_timeout_s=request_timeout_s,
+                )
+            )
+    except (JudgeError, ValueError) as exc:
+        code = exc.code if isinstance(exc, JudgeError) else "INVALID_PROVIDER_CONFIG"
+        logger.error(
+            "judge_run_failed",
+            code=code,
+            mode=mode.value,
             provider=provider,
             model=model,
-            judge_family=judge_family,
-            candidate_family=candidate_family,
-            responses_path=responses,
-            seed=seed,
-            output_path=output,
+            **exception_summary(exc),
         )
-    except JudgeError as exc:
-        console.print(f"[red]{exc.code}[/red] {exc}")
+        console.print(f"[red]{code}[/red] {exc}")
         raise typer.Exit(1) from exc
     _emit_json(
         {
@@ -442,6 +532,47 @@ def judge_run(
             "output": str(output),
         }
     )
+
+
+async def _judge_run_live_async(
+    *,
+    mode: JudgeMode,
+    rubric: Path,
+    candidates: Path | None,
+    pairs: Path | None,
+    provider_name: str,
+    model: str,
+    judge_family: str,
+    candidate_family: str,
+    seed: int,
+    output: Path,
+    concurrency: int,
+    request_timeout_s: float | None,
+) -> JudgmentArtifact:
+    settings = get_settings()
+    provider = _create_scoring_provider(
+        provider_name,
+        concurrency=concurrency,
+        rpm=settings.judge_provider_rpm,
+        tpm=settings.judge_provider_tpm,
+    )
+    try:
+        return await run_live_judgment(
+            mode=mode,
+            rubric_path=rubric,
+            candidates_path=candidates,
+            pairs_path=pairs,
+            provider=provider,
+            model=model,
+            judge_family=judge_family,
+            candidate_family=candidate_family,
+            seed=seed,
+            output_path=output,
+            concurrency=concurrency,
+            policy=_provider_call_policy(request_timeout_s),
+        )
+    finally:
+        await _close_provider(provider)
 
 
 @judge_app.command("validate")
@@ -510,20 +641,55 @@ def rag_evidence(
     nli_provider: str | None = typer.Option(None, "--nli-provider"),
     nli_model: str | None = typer.Option(None, "--nli-model"),
     nli_responses: Path | None = typer.Option(None, "--nli-responses"),
+    concurrency: int = typer.Option(2, "--concurrency", min=1),
+    request_timeout_s: float | None = typer.Option(
+        None,
+        "--request-timeout",
+        min=0.1,
+        help="Per-provider-call timeout in seconds",
+    ),
 ) -> None:
     """Build rag_evidence.json from a run report and local evidence JSONL."""
     setup_logging()
     try:
-        artifact = build_rag_evidence(
-            report_path=report,
-            evidence_path=evidence,
-            output_path=output,
-            nli_provider=nli_provider,
-            nli_model=nli_model,
-            nli_responses_path=nli_responses,
+        if nli_provider in {None, "mock"}:
+            artifact = build_rag_evidence(
+                report_path=report,
+                evidence_path=evidence,
+                output_path=output,
+                nli_provider=nli_provider,
+                nli_model=nli_model,
+                nli_responses_path=nli_responses,
+            )
+        else:
+            if nli_model is None:
+                raise RagError("NLI_UNAVAILABLE", "--nli-model is required with a live provider")
+            if nli_responses is not None:
+                raise RagError(
+                    "INVALID_PROVIDER_CONFIG",
+                    "--nli-responses is only valid with --nli-provider mock",
+                )
+            artifact = asyncio.run(
+                _rag_evidence_live_async(
+                    report=report,
+                    evidence=evidence,
+                    output=output,
+                    provider_name=nli_provider,
+                    nli_model=nli_model,
+                    concurrency=concurrency,
+                    request_timeout_s=request_timeout_s,
+                )
+            )
+    except (RagError, ValueError) as exc:
+        code = exc.code if isinstance(exc, RagError) else "INVALID_PROVIDER_CONFIG"
+        logger.error(
+            "rag_evidence_failed",
+            code=code,
+            provider=nli_provider,
+            model=nli_model,
+            **exception_summary(exc),
         )
-    except RagError as exc:
-        console.print(f"[red]{exc.code}[/red] {exc}")
+        console.print(f"[red]{code}[/red] {exc}")
         raise typer.Exit(1) from exc
     _emit_json(
         {
@@ -534,6 +700,37 @@ def rag_evidence(
             "output": str(output),
         }
     )
+
+
+async def _rag_evidence_live_async(
+    *,
+    report: Path,
+    evidence: Path,
+    output: Path,
+    provider_name: str,
+    nli_model: str,
+    concurrency: int,
+    request_timeout_s: float | None,
+) -> dict[str, Any]:
+    settings = get_settings()
+    provider = _create_scoring_provider(
+        provider_name,
+        concurrency=concurrency,
+        rpm=settings.nli_provider_rpm,
+        tpm=settings.nli_provider_tpm,
+    )
+    try:
+        return await build_live_rag_evidence(
+            report_path=report,
+            evidence_path=evidence,
+            output_path=output,
+            provider=provider,
+            nli_model=nli_model,
+            concurrency=concurrency,
+            policy=_provider_call_policy(request_timeout_s),
+        )
+    finally:
+        await _close_provider(provider)
 
 
 @app.command("run")

@@ -14,6 +14,7 @@ from evalharness.observability import (
     PipelineStage,
     ProgressEvent,
     emit_progress,
+    get_logger,
     payload_summary,
     sanitize_text,
     setup_logging,
@@ -27,7 +28,20 @@ def test_sanitize_text_redacts_credentials_and_bounds_output() -> None:
     assert "hunter2" not in sanitized
     assert sanitized.count("[REDACTED]") == 2
     assert "\n" not in sanitized
-    assert len(sanitized) <= 81
+    assert len(sanitized) <= 80
+
+
+def test_sanitize_text_counts_the_ellipsis_inside_max_chars() -> None:
+    sanitized = sanitize_text("x" * 500, max_chars=280)
+
+    assert len(sanitized) == 280
+    assert sanitized == "x" * 279 + "…"
+
+
+def test_sanitize_text_returns_input_unchanged_at_exactly_max_chars() -> None:
+    sanitized = sanitize_text("x" * 280, max_chars=280)
+
+    assert sanitized == "x" * 280
 
 
 def test_payload_summary_omits_content_by_default(
@@ -93,3 +107,30 @@ def test_rich_progress_adapter_handles_stage_transitions() -> None:
     rendered = output.getvalue()
     assert "Reporting" in rendered
     assert "Wrote junit" in rendered
+
+
+def test_json_logs_remain_one_object_per_stderr_line_during_narrow_progress(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("LOG_FORMAT", "json")
+    get_settings.cache_clear()
+    setup_logging()
+    progress_output = StringIO()
+    narrow_console = Console(
+        file=progress_output,
+        force_terminal=True,
+        no_color=True,
+        width=12,
+    )
+    log = get_logger("progress-json-regression")
+
+    with PipelineProgress(narrow_console) as progress:
+        progress(ProgressEvent(PipelineStage.GENERATING, 1, 2, "case-with-a-long-name"))
+        log.info("first_event", case_id="case-with-a-long-name")
+        log.info("second_event", case_id="another-case-with-a-long-name")
+
+    stderr_lines = capsys.readouterr().err.splitlines()
+    records = [json.loads(line) for line in stderr_lines]
+    assert [record["event"] for record in records] == ["first_event", "second_event"]
+    assert "first_event" not in progress_output.getvalue()

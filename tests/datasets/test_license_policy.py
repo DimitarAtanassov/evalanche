@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -18,6 +19,7 @@ from tests.datasets._helpers import (
     rewrite_source,
 )
 from tools.datasets import MaterializationError, materialize_dataset
+from tools.datasets.adapters import ADAPTERS
 
 CACHE_ONLY_ADAPTERS = (
     "financial_phrasebank",
@@ -141,10 +143,13 @@ def test_unlisted_license_outside_fixtures_stays_valid_for_cache_use(tmp_path: P
 
 
 def test_dataset_card_registry_without_the_adapter_blocks_fixture_write(tmp_path: Path) -> None:
-    """A fixtures tree with a card registry that omits the adapter still fails closed."""
+    """Mentioning a source id without meaningful card fields still fails closed."""
     repo = tmp_path / "repo"
     (repo / "docs").mkdir(parents=True)
-    (repo / "docs" / "datasets.md").write_text("# empty card registry\n", encoding="utf-8")
+    (repo / "docs" / "datasets.md").write_text(
+        "The synthetic_qa adapter exists, but this is not a dataset card.\n",
+        encoding="utf-8",
+    )
     output = repo / "fixtures" / "datasets" / "uncarded-smoke"
 
     with pytest.raises(MaterializationError, match="LICENSE_BLOCK"):
@@ -160,9 +165,66 @@ def test_dataset_card_registry_without_the_adapter_blocks_fixture_write(tmp_path
     assert not output.exists()
 
 
+def test_complete_dataset_card_allows_redistributable_fixture_write(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / "docs").mkdir(parents=True)
+    (repo / "docs" / "datasets.md").write_text(
+        """### synthetic_qa
+
+- License: `CC0-1.0`.
+- Redistribution: repository-authored text may be committed.
+- Attribution: repository-authored synthetic fixture.
+- Source revision: `synthetic-v1`.
+- Task/metrics: short QA; exact match.
+- Privacy: fictional bounded text.
+""",
+        encoding="utf-8",
+    )
+    output = repo / "fixtures" / "datasets" / "synthetic-qa-smoke"
+
+    materialize_dataset(
+        adapter_name="synthetic_qa",
+        source=SOURCE_ROOT / "synthetic_qa.jsonl",
+        output=output,
+        seed=42,
+        size=5,
+        tier=DatasetTier.SMOKE,
+    )
+
+    assert validate_dataset(load_dataset(output)).valid
+
+
+def test_by_materialization_requires_nonempty_adapter_attribution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = ADAPTERS["synthetic_qa"]
+    monkeypatch.setitem(
+        ADAPTERS,
+        "synthetic_qa",
+        replace(base, license="CC-BY-4.0", attribution="   "),
+    )
+    output = tmp_path / "cache" / "missing-attribution"
+
+    with pytest.raises(
+        MaterializationError,
+        match="CC-BY-4.0 requires nonempty attribution",
+    ):
+        materialize_dataset(
+            adapter_name="synthetic_qa",
+            source=SOURCE_ROOT / "synthetic_qa.jsonl",
+            output=output,
+            seed=42,
+            size=5,
+            tier=DatasetTier.SMOKE,
+        )
+
+    assert not output.exists()
+
+
 def test_cache_only_materialize_outside_fixtures_is_allowed(tmp_path: Path) -> None:
     """Banned SPDX may still write outside tracked fixtures when source bytes pin."""
-    source = tmp_path / "scifact.jsonl"
+    source = tmp_path / "scifact-prejoined.jsonl"
     source.write_text(
         (
             '{"id":"c1","task_type":"retrieval","inputs":{"query":"q","candidates":[{"id":"d1"}]},'
@@ -181,16 +243,16 @@ def test_cache_only_materialize_outside_fixtures_is_allowed(tmp_path: Path) -> N
     pin = {
         "revision": "operator-pinned",
         "revision_digest": f"sha256:{hashlib.sha256(source.read_bytes()).hexdigest()}",
-        "canonical_url": "https://example.invalid/scifact.jsonl",
+        "canonical_url": "https://example.invalid/scifact-prejoined.jsonl",
     }
     source.with_name(f"{source.name}.pin.yaml").write_text(
         yaml.safe_dump(pin),
         encoding="utf-8",
     )
-    output = tmp_path / "cache" / "scifact-smoke"
+    output = tmp_path / "cache" / "scifact-prejoined-smoke"
 
     materialize_dataset(
-        adapter_name="scifact",
+        adapter_name="scifact_prejoined",
         source=source,
         output=output,
         seed=42,

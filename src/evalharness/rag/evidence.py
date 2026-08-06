@@ -13,7 +13,7 @@ from evalharness.observability import get_logger
 from evalharness.rag.citations import citation_attribution
 from evalharness.rag.context import context_precision_recall
 from evalharness.rag.errors import RagError
-from evalharness.rag.faithfulness import build_faithfulness, load_mock_nli_responses
+from evalharness.rag.faithfulness import NliLabel, build_faithfulness, load_mock_nli_responses
 from evalharness.rag.text import EXAMPLE_LIMIT, MAX_CONTEXTS_PER_CASE, truncate_span
 
 logger = get_logger(__name__)
@@ -138,53 +138,21 @@ def _mock_nli_identity(model: str) -> dict[str, str]:
     }
 
 
-def build_rag_evidence(
+def _write_rag_artifact(
     *,
-    report_path: Path,
-    evidence_path: Path,
+    report: dict[str, Any],
+    cases: list[dict[str, Any]],
     output_path: Path,
-    nli_provider: str | None = None,
-    nli_model: str | None = None,
-    nli_responses_path: Path | None = None,
+    nli_labels: dict[tuple[str, int, str], NliLabel] | None,
+    nli_config: dict[str, Any],
+    cost_usd_total: float,
+    missing_label_code: str,
 ) -> dict[str, Any]:
-    """Assemble the Phase 6 RAG evidence artifact."""
-    report = _read_json(report_path)
-    if report.get("schema_version") != "2.1":
-        raise RagError(
-            "UNSUPPORTED_SCHEMA",
-            f"{report_path}: expected report schema 2.1, got {report.get('schema_version')!r}",
-        )
-    cases = _load_evidence(evidence_path)
-
-    nli_labels = None
-    nli_config: dict[str, Any] = {
-        "nli_model": None,
-        "nli_config_sha256": None,
-    }
-    if nli_provider is None and (nli_model is not None or nli_responses_path is not None):
-        raise RagError(
-            "NLI_UNAVAILABLE",
-            "--nli-model and --nli-responses require --nli-provider",
-        )
-    if nli_provider is not None:
-        if nli_provider != "mock":
-            raise RagError(
-                "PROVIDER_UNSUPPORTED",
-                "Phase 6 CI path supports --nli-provider mock only",
-            )
-        if nli_model is None or nli_responses_path is None:
-            raise RagError(
-                "MISSING_ARTIFACT",
-                "--nli-model and --nli-responses are required when --nli-provider mock",
-            )
-        nli_labels = load_mock_nli_responses(nli_responses_path)
-        identity = _mock_nli_identity(nli_model)
-        nli_config = {
-            "nli_model": identity,
-            "nli_config_sha256": f"sha256:{sha256_hex(canonical_json(identity))}",
-        }
-
-    faithfulness, used_labels, claim_notes = build_faithfulness(cases, nli_labels=nli_labels)
+    faithfulness, used_labels, claim_notes = build_faithfulness(
+        cases,
+        nli_labels=nli_labels,
+        missing_label_code=missing_label_code,
+    )
     context = context_precision_recall(cases)
     citations = citation_attribution(
         cases,
@@ -231,7 +199,7 @@ def build_rag_evidence(
         },
         "bounded_examples": bounded_examples,
         "claim_parse_notes": claim_notes,
-        "cost_usd_total": 0.0,
+        "cost_usd_total": cost_usd_total,
         "gating_allowed": False,
     }
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -247,3 +215,60 @@ def build_rag_evidence(
         gating_allowed=False,
     )
     return artifact
+
+
+def build_rag_evidence(
+    *,
+    report_path: Path,
+    evidence_path: Path,
+    output_path: Path,
+    nli_provider: str | None = None,
+    nli_model: str | None = None,
+    nli_responses_path: Path | None = None,
+) -> dict[str, Any]:
+    """Assemble the Phase 6 RAG evidence artifact."""
+    report = _read_json(report_path)
+    if report.get("schema_version") != "2.1":
+        raise RagError(
+            "UNSUPPORTED_SCHEMA",
+            f"{report_path}: expected report schema 2.1, got {report.get('schema_version')!r}",
+        )
+    cases = _load_evidence(evidence_path)
+
+    nli_labels = None
+    nli_config: dict[str, Any] = {
+        "nli_model": None,
+        "nli_config_sha256": None,
+    }
+    if nli_provider is None and (nli_model is not None or nli_responses_path is not None):
+        raise RagError(
+            "NLI_UNAVAILABLE",
+            "--nli-model and --nli-responses require --nli-provider",
+        )
+    if nli_provider is not None:
+        if nli_provider != "mock":
+            raise RagError(
+                "PROVIDER_UNSUPPORTED",
+                "Phase 6 CI path supports --nli-provider mock only",
+            )
+        if nli_model is None or nli_responses_path is None:
+            raise RagError(
+                "MISSING_ARTIFACT",
+                "--nli-model and --nli-responses are required when --nli-provider mock",
+            )
+        nli_labels = load_mock_nli_responses(nli_responses_path)
+        identity = _mock_nli_identity(nli_model)
+        nli_config = {
+            "nli_model": identity,
+            "nli_config_sha256": f"sha256:{sha256_hex(canonical_json(identity))}",
+        }
+
+    return _write_rag_artifact(
+        report=report,
+        cases=cases,
+        output_path=output_path,
+        nli_labels=nli_labels,
+        nli_config=nli_config,
+        cost_usd_total=0.0,
+        missing_label_code="MOCK_RESPONSE_MISSING",
+    )

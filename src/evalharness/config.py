@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     default_request_timeout_s: float = 60.0
     default_run_timeout_s: float = 14_400.0
     default_shutdown_drain_timeout_s: float = 30.0
+    judge_provider_rpm: int = Field(default=60, ge=1)
+    judge_provider_tpm: int = Field(default=60_000, ge=1)
+    nli_provider_rpm: int = Field(default=60, ge=1)
+    nli_provider_tpm: int = Field(default=60_000, ge=1)
 
 
 @lru_cache

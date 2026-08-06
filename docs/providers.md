@@ -66,6 +66,26 @@ flowchart LR
 Per‑provider limits live in `providers/config.py` (`OllamaConfig`,
 `OpenAICompatibleConfig`): RPM, TPM, and concurrency defaults differ by backend.
 
+## Live judge and NLI calls
+
+`evalctl judge run` and `evalctl rag evidence` use the same `Provider` and
+`ManagedProvider` path as generation. Their call policy is intentionally outside
+the adapters:
+
+- concurrency defaults to 2 and is configurable with `--concurrency`;
+- every model-resolution and generation call has an explicit
+  `--request-timeout` (default `DEFAULT_REQUEST_TIMEOUT_S`, 60 seconds);
+- transient and rate-limit failures use the executor's bounded full-jitter policy
+  and honor `Retry-After`; adapters still perform no retries;
+- judge capacity uses `JUDGE_PROVIDER_RPM` / `JUDGE_PROVIDER_TPM`, while NLI uses
+  `NLI_PROVIDER_RPM` / `NLI_PROVIDER_TPM`;
+- the CLI creates one pooled provider client per command and closes it in `finally`.
+
+Both workflows request strict JSON schema output and validate it again after
+removing at most one outer markdown fence. Invalid JSON, extra fields, invalid
+labels, and out-of-range scores fail closed. Artifacts record the digest returned
+by `resolve_version`, not the requested model tag.
+
 ## Adding a provider
 
 1. Create `providers/yourbackend.py` implementing the `Provider` protocol.

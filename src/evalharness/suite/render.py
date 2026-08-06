@@ -41,11 +41,32 @@ def _data(rows: list[dict[str, Any]]) -> alt.Data:
     return alt.Data(values=rows)  # type: ignore[no-untyped-call]
 
 
+_SCRIPT_UNSAFE = {
+    "<": "\\u003c",
+    ">": "\\u003e",
+    "&": "\\u0026",
+    "\u2028": "\\u2028",
+    "\u2029": "\\u2029",
+}
+
+
+def _script_json(value: Any) -> str:
+    """Serialize JSON for inline embedding inside a <script> element.
+
+    Chart specs carry run labels and slice names, so a member run could otherwise
+    close the script element with ``</script>`` or break the statement with a raw
+    U+2028/U+2029, which JSON permits in strings but JavaScript treats as a line
+    terminator. Escaping to \\uXXXX keeps the value JSON-identical after parsing.
+    """
+    encoded = json.dumps(value, sort_keys=True)
+    return "".join(_SCRIPT_UNSAFE.get(character, character) for character in encoded)
+
+
 def _render_chart(chart: alt.Chart | None, div_id: str) -> str:
     if chart is None:
         return ""
-    spec = json.dumps(chart.configure(**_THEME).to_dict(), sort_keys=True)
-    options = json.dumps(_EMBED_OPTIONS, sort_keys=True)
+    spec = _script_json(chart.configure(**_THEME).to_dict())
+    options = _script_json(_EMBED_OPTIONS)
     return (
         f'<div id="{div_id}" class="chart"></div>\n'
         f'<script>vegaEmbed("#{div_id}", {spec}, {options});</script>'

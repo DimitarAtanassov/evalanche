@@ -8,6 +8,11 @@ from evalharness.core.enums import Requirement
 from evalharness.core.models import Case, Generation, ScoringContext
 from evalharness.scoring.catalog import ALL_TEXT_TASKS, ScalarMetric, _reference
 
+try:
+    from bert_score import score as _bert_score
+except ImportError:  # pragma: no cover - only when metrics-ml extra is absent
+    _bert_score = None
+
 
 class BERTScoreMetric(ScalarMetric):
     name = "bertscore_f1"
@@ -38,9 +43,9 @@ class BERTScoreMetric(ScalarMetric):
         reference = _reference(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}
-        from bert_score import score
-
-        precision, recall, f1 = score(
+        if _bert_score is None:
+            return None, {"reason": "bert_score_unavailable"}
+        precision, recall, f1 = _bert_score(
             [gen.output],
             [reference],
             model_type=str(self.config["model_type"]),

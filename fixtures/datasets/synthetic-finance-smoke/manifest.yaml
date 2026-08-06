@@ -7,7 +7,7 @@ contamination_risk: low
 content_sha256: 1f61887718198ad5402c22d9a0df415f7e91d30afd8d581c3b5d3426bcbbdda6
 created_at: '2026-08-05'
 license: CC0-1.0
-name: synthetic-finance
+name: phase4-synthetic-finance
 pii_scrub_procedure: docs/datasets.md#privacy-and-pii
 pii_scrubbed: true
 schema_version: '0.1'
@@ -24,4 +24,4 @@ split: dev
 task_metrics:
 - numeric_assertion
 tier: smoke
-version: 1.0.0
+version: 1.0.0+materialized.bd2f17798e74864f

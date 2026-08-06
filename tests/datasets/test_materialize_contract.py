@@ -153,6 +153,34 @@ def test_external_digest_mismatch_leaves_output_absent(tmp_path: Path) -> None:
     assert not output.exists()
 
 
+def test_external_pin_rejects_empty_revision_before_materialization(tmp_path: Path) -> None:
+    source = tmp_path / "dev-v1.1.json"
+    source.write_text('{"data":[]}', encoding="utf-8")
+    pin = {
+        "revision": "",
+        "revision_digest": f"sha256:{sha256_hex(source.read_bytes())}",
+        "canonical_url": "https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v1.1.json",
+    }
+    source.with_name(f"{source.name}.pin.yaml").write_text(
+        yaml.safe_dump(pin),
+        encoding="utf-8",
+    )
+    output = tmp_path / "squad-out"
+
+    with pytest.raises(MaterializationError, match="revision must be non-empty") as exc_info:
+        materialize_dataset(
+            adapter_name="squad_v1_1",
+            source=source,
+            output=output,
+            seed=42,
+            size=5,
+            tier=DatasetTier.SMOKE,
+        )
+
+    assert exc_info.value.code == "SOURCE_PIN_INVALID"
+    assert not output.exists()
+
+
 def test_materialize_path_does_not_import_huggingface() -> None:
     banned = ("datasets", "huggingface_hub", "transformers")
     before = {name for name in banned if name in sys.modules}

@@ -18,7 +18,7 @@ ships the full Phase‑2/3 surface:
 
 | Area | On `main` today |
 |------|-----------------|
-| CLI | `dataset-validate`, `run`, `score`, `runs rescore`, `runs compare`, `power`, `calibrate` |
+| CLI | `dataset-validate`, `run`, `score`, `runs rescore`, `runs compare`, `power`, `calibrate`, `judge run|validate|attach-calibration`, `rag evidence` |
 | Providers | `ollama`, `mock`, `openai_compatible`, wrapped by `ManagedProvider` (token‑bucket RPM/TPM + concurrency + circuit breaker) |
 | Metrics | Full catalog via `MetricRegistry` (lexical, structured, classification, retrieval, overlap) + optional `bertscore_f1` (`metrics-ml` extra) + `EmbeddingService` / calibration helpers |
 | Statistics | `statistics/` — Wilson, BCa, paired bootstrap, McNemar, BH, Cohen's h, pass@k, power, flaky‑case detection |
@@ -271,6 +271,9 @@ uv run alembic upgrade head
 `OTEL_EXPORTER_OTLP_ENDPOINT`. OpenAI‑compatible runs also need
 `OPENAI_COMPATIBLE_BASE_URL` and `OPENAI_COMPATIBLE_MODEL_REVISION` (and optionally
 an API key).
+Phase 6 live scoring budgets are independently configurable with
+`JUDGE_PROVIDER_RPM`, `JUDGE_PROVIDER_TPM`, `NLI_PROVIDER_RPM`, and
+`NLI_PROVIDER_TPM`.
 
 Head revision is **`0003_foundation_correctness`**. Confirm:
 
@@ -314,6 +317,12 @@ evalctl
 ├── dataset-validate
 ├── run
 ├── score
+├── judge
+│   ├── run
+│   ├── validate
+│   └── attach-calibration
+├── rag
+│   └── evidence
 ├── runs
 │   ├── rescore
 │   └── compare
@@ -441,7 +450,52 @@ uv run evalctl calibrate dev-similarities.jsonl
 # -> roc_auc, pr_auc, threshold, dev_f1
 ```
 
-### 4.8 Workflow A — offline mock (works anywhere Postgres is up)
+### 4.8 Live judge and RAG NLI
+
+Live Phase 6 scoring is file-primary and requires no database. Ollama resolves the
+installed model digest. OpenAI-compatible endpoints require
+`OPENAI_COMPATIBLE_BASE_URL` and an immutable
+`OPENAI_COMPATIBLE_MODEL_REVISION`.
+
+```bash
+uv run evalctl judge run \
+  --mode pointwise \
+  --rubric fixtures/judge/rubric-pointwise.yaml \
+  --candidates fixtures/judge/candidates-pointwise.jsonl \
+  --provider ollama \
+  --model llama3.2:1b \
+  --judge-family llama \
+  --candidate-family qwen \
+  --seed 42 \
+  --concurrency 2 \
+  --request-timeout 60 \
+  --output /tmp/judgment.json
+
+uv run evalctl rag evidence \
+  --report fixtures/rag/report.json \
+  --evidence fixtures/rag/evidence.jsonl \
+  --nli-provider ollama \
+  --nli-model llama3.2:1b \
+  --concurrency 2 \
+  --request-timeout 60 \
+  --output /tmp/rag_evidence.json
+```
+
+`--responses` and `--nli-responses` remain required only for the hermetic `mock`
+paths. Live outputs must satisfy versioned JSON schemas. A malformed or
+out-of-range pointwise result, either failed pairwise ordering, or an invalid NLI
+label aborts without writing a partial artifact. All new judgment and RAG
+artifacts retain `gating_allowed: false`.
+
+The opt-in smoke command calls both live paths and is not part of default pytest:
+
+```bash
+uv run python scripts/live_judge_rag_smoke.py \
+  --judge-model llama3.2:1b \
+  --nli-model llama3.2:1b
+```
+
+### 4.9 Workflow A — offline mock (works anywhere Postgres is up)
 
 ```bash
 docker compose up -d postgres
@@ -456,7 +510,7 @@ uv run evalctl run \
   --output reports
 ```
 
-### 4.9 Workflow B — live Ollama baseline + candidate (release‑style)
+### 4.10 Workflow B — live Ollama baseline + candidate (release‑style)
 
 Matches the pattern in `scripts/run_release_e2e.py` (smaller dataset for a laptop):
 
@@ -1340,7 +1394,7 @@ Only items that are **truly not on current `main`** (or intentionally unfinished
 | Item | Reality | Source |
 |------|---------|--------|
 | Object storage for raw payloads | JSONB in Postgres by design | [`DEFERRED.md`](../DEFERRED.md) |
-| LLM‑as‑judge / rubrics / swap bias | `judgments` table only | Phase‑4 notes; not implemented |
+| Blocking release policy for judge/RAG signals | Phase 6 artifacts remain informational until calibrated and attached | Phase 6 contracts |
 | `evald` HTTP API, OIDC, webhooks, `gates.yaml` service | Not shipped | Phase‑5 notes |
 | Native Anthropic / Google adapters | Only `openai_compatible` + Ollama + mock | Provider package |
 | Durable pgvector write path + HNSW for embeddings | Table exists; hot path is in‑memory | `EmbeddingService` / models |

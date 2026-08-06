@@ -5,6 +5,7 @@ import math
 from evalharness.scoring.calibration import calibrate_threshold, calibration_metrics
 from evalharness.statistics import (
     benjamini_hochberg,
+    compare_binary,
     exact_mcnemar,
     pass_at_k,
     required_sample_size,
@@ -23,6 +24,18 @@ def test_exact_mcnemar_and_bh() -> None:
     b, c, p = exact_mcnemar([True, True, False], [False, True, True])
     assert (b, c, p) == (1, 1, 1.0)
     assert benjamini_hochberg([0.001, 0.02, 0.5]) == [True, True, False]
+
+
+def test_identical_paired_results_have_finite_zero_width_interval() -> None:
+    result = compare_binary(
+        "exact_match",
+        [True, False, True, False],
+        [True, False, True, False],
+    )
+
+    assert result.absolute_delta == 0.0
+    assert result.ci_low == 0.0
+    assert result.ci_high == 0.0
 
 
 def test_power_and_calibration() -> None:

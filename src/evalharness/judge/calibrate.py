@@ -7,10 +7,10 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from evalharness.hashing import canonical_json, sha256_hex
+from evalharness.hashing import calibration_body_digest, judgment_identity_digest
 from evalharness.judge.agreement import compute_agreement
 from evalharness.judge.errors import JudgeError
-from evalharness.judge.io import digest_payload, read_json, write_json
+from evalharness.judge.io import read_json, write_json
 from evalharness.judge.labels import load_labels
 from evalharness.judge.models import (
     AgreementMetric,
@@ -24,13 +24,10 @@ from evalharness.judge.models import (
 )
 from evalharness.judge.rubric import load_rubric
 
-
-def _judgment_digest(payload: dict[str, Any]) -> str:
-    return f"sha256:{sha256_hex(canonical_json(payload))}"
-
-
-def _calibration_digest(body: dict[str, Any]) -> str:
-    return f"sha256:{sha256_hex(canonical_json(body))}"
+AGREEMENT_UNDEFINED = (
+    "AGREEMENT_UNDEFINED: holdout has fewer than two observed categories, so "
+    "chance-corrected agreement is undefined"
+)
 
 
 def _load_judgment(path: Path) -> tuple[JudgmentArtifact, dict[str, Any]]:
@@ -130,7 +127,7 @@ def _split_section(
     agreement_metric: AgreementMetric,
 ) -> SplitCalibration:
     human, judge = _extract_judge_values(judgment, items_by_case, labels)
-    agreement = compute_agreement(agreement_metric, human, judge) if human else None
+    agreement = compute_agreement(agreement_metric, human, judge)
     return SplitCalibration(
         label_set_id=labels[0].label_set_id,
         n=len(human),
@@ -216,7 +213,11 @@ def validate_calibration(
 
     agreement_holdout = holdout_section.agreement
     if agreement_holdout is None:
-        block_reasons.append("holdout agreement unavailable")
+        block_reasons.append(
+            AGREEMENT_UNDEFINED
+            if holdout_section.n
+            else "holdout agreement unavailable: no labelled case paired with a judgment"
+        )
     elif agreement_holdout < calibration_cfg.agreement_threshold:
         block_reasons.append(
             f"agreement_holdout={agreement_holdout:.4f} below "
@@ -249,7 +250,7 @@ def validate_calibration(
 
     body: dict[str, Any] = {
         "schema_version": "0.1",
-        "judgment_digest": _judgment_digest(judgment_payload),
+        "judgment_digest": judgment_identity_digest(judgment_payload),
         "rubric_name": judgment.rubric_name,
         "rubric_version": judgment.rubric_version,
         "holdout": holdout_section.model_dump(mode="json"),
@@ -262,7 +263,7 @@ def validate_calibration(
         "plain_language": plain,
         "block_reasons": block_reasons,
     }
-    digest = _calibration_digest(body)
+    digest = calibration_body_digest(body)
     artifact = CalibrationArtifact.model_validate({**body, "calibration_digest": digest})
     write_json(output_path, artifact)
     return artifact
@@ -282,17 +283,13 @@ def attach_calibration(
     except ValidationError as exc:
         raise JudgeError("INVALID_ARTIFACT", f"{calibration_path}: {exc}") from exc
 
-    calibration_body = {
-        key: value for key, value in calibration_payload.items() if key != "calibration_digest"
-    }
-    expected_calibration_digest = _calibration_digest(calibration_body)
-    if calibration.calibration_digest != expected_calibration_digest:
+    if calibration.calibration_digest != calibration_body_digest(calibration_payload):
         raise JudgeError(
             "INVALID_ARTIFACT",
             f"{calibration_path}: calibration_digest does not match artifact body",
         )
 
-    expected = _judgment_digest(judgment_payload)
+    expected = judgment_identity_digest(judgment_payload)
     if calibration.judgment_digest != expected:
         raise JudgeError(
             "CALIBRATION_JUDGMENT_MISMATCH",
@@ -314,8 +311,3 @@ def attach_calibration(
     )
     write_json(output_path, updated)
     return updated
-
-
-def judgment_file_digest(path: Path) -> str:
-    """Public helper for tests asserting digest stability."""
-    return digest_payload(read_json(path))

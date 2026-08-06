@@ -1,4 +1,4 @@
-"""Phase 4 dataset contract and harness-correctness tests."""
+"""Dataset contract and harness-correctness tests."""
 
 from __future__ import annotations
 
@@ -148,7 +148,7 @@ def _perfect_output(case: Case) -> str:
 def _generation(case: Case) -> Generation:
     return Generation(
         id=None,
-        run_id="phase4-smoke",
+        run_id="dataset-smoke",
         case_external_id=case.external_id,
         repeat_idx=0,
         output=_perfect_output(case),

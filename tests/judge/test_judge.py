@@ -1,4 +1,4 @@
-"""Phase 6 judge: rubrics, pairwise swap, calibration gate, truncation."""
+"""Judge: rubrics, pairwise swap, calibration gate, truncation."""
 
 from __future__ import annotations
 
@@ -10,10 +10,12 @@ import pytest
 from typer.testing import CliRunner
 
 from evalharness.cli import app
+from evalharness.config import get_settings
 from evalharness.judge import JudgeError, attach_calibration, run_judgment, validate_calibration
-from evalharness.judge.models import JudgeMode
+from evalharness.judge.agreement import compute_agreement
+from evalharness.judge.models import AgreementMetric, JudgeMode
 from evalharness.judge.pairwise import resolve_original_preference
-from evalharness.judge.text import REASONING_LIMIT
+from evalharness.judge.text import EVIDENCE_TEXT_LIMIT, REASONING_LIMIT
 
 ROOT = Path(__file__).parents[2]
 JUDGE = ROOT / "fixtures" / "judge"
@@ -41,10 +43,54 @@ def test_pointwise_run_is_informational_and_truncates_reasoning(tmp_path: Path) 
     assert artifact.judge_model.resolved_version.startswith("sha256:")
     assert artifact.cost_usd_total == 0.0
     assert "p50" in artifact.latency_ms.model_dump()
+    source_reasoning = json.loads(
+        (JUDGE / "mock-judge-responses-pointwise.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )["reasoning"]
+    assert len(source_reasoning) > REASONING_LIMIT
     long_reasoning = artifact.items[0]["reasoning"]
     assert isinstance(long_reasoning, str)
-    assert len(long_reasoning) <= REASONING_LIMIT + 1
+    assert len(long_reasoning) == REASONING_LIMIT
     assert long_reasoning.endswith("…")
+    assert long_reasoning[:-1] == " ".join(source_reasoning.split())[: REASONING_LIMIT - 1]
+
+
+def test_pointwise_evidence_candidate_text_is_bounded_to_the_evidence_limit(
+    tmp_path: Path,
+) -> None:
+    """Published evidence inherits the 280-char cap, ellipsis included."""
+    overlong = "candidate " * 60
+    candidates_path = tmp_path / "candidates-long.jsonl"
+    candidates_path.write_text(
+        json.dumps(
+            {
+                "case_id": "case-00001",
+                "generation_id": "gen-00001",
+                "candidate_text": overlong,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    artifact = run_judgment(
+        mode=JudgeMode.POINTWISE,
+        rubric_path=JUDGE / "rubric-pointwise.yaml",
+        candidates_path=candidates_path,
+        pairs_path=None,
+        provider="mock",
+        model="mock-judge",
+        judge_family="qwen",
+        candidate_family="llama",
+        responses_path=JUDGE / "mock-judge-responses-pointwise.jsonl",
+        seed=42,
+        output_path=tmp_path / "judgment-long-evidence.json",
+    )
+
+    evidence_text = artifact.items[0]["evidence"]["candidate_text"]
+    assert len(evidence_text) == EVIDENCE_TEXT_LIMIT
+    assert evidence_text.endswith("…")
+    assert evidence_text[:-1] == " ".join(overlong.split())[: EVIDENCE_TEXT_LIMIT - 1]
+    assert overlong.strip() not in json.dumps(artifact.model_dump(mode="json"))
 
 
 def test_pointwise_run_rejects_score_without_required_reasoning(tmp_path: Path) -> None:
@@ -105,9 +151,15 @@ def test_pairwise_swap_consistency_and_flip_becomes_tie(tmp_path: Path) -> None:
     # Fixture: 2/3 pairs consistent; 4 of 6 non-tie orderings prefer first-shown "A".
     assert artifact.pairwise_summary.swap_consistency == pytest.approx(2 / 3)
     assert artifact.pairwise_summary.position_bias == pytest.approx(2 / 3)
-    bt = artifact.pairwise_summary.bradley_terry
-    assert bt is not None
-    assert bt.status == "ok"
+    graph = artifact.pairwise_summary.bradley_terry
+    assert graph is not None
+    # A connected graph yields raw win rates; Phase 6 never fits BT strengths.
+    assert graph.status == "win_rates_only"
+    assert graph.win_rates == {  # type: ignore[union-attr]
+        "llama3.2:3b": pytest.approx(1.0),
+        "mistral:7b": pytest.approx(0.0),
+        "qwen2.5:3b": pytest.approx(0.0),
+    }
 
 
 def test_pairwise_self_pair_hard_fails(tmp_path: Path) -> None:
@@ -313,6 +365,98 @@ def test_calibration_gate_true_only_on_passing_holdout(tmp_path: Path) -> None:
     assert raw["gating_allowed"] is False
 
 
+@pytest.mark.parametrize(
+    ("metric", "human", "judge"),
+    [
+        (AgreementMetric.COHEN_KAPPA, [5, 5, 5], [5, 5, 5]),
+        (AgreementMetric.SPEARMAN, [4.0, 4.0, 4.0], [1.0, 2.0, 3.0]),
+        (AgreementMetric.SPEARMAN, [1.0, 2.0, 3.0], [4.0, 4.0, 4.0]),
+        (AgreementMetric.KRIPPENDORFF_ALPHA, ["yes", "yes"], ["yes", "yes"]),
+    ],
+)
+def test_compute_agreement_is_none_when_undefined(
+    metric: AgreementMetric,
+    human: list[int | float | str],
+    judge: list[int | float | str],
+) -> None:
+    """A degenerate single-category holdout has no chance term, so agreement is undefined."""
+    assert compute_agreement(metric, human, judge) is None
+
+
+def test_calibration_gate_false_when_holdout_is_a_single_category(tmp_path: Path) -> None:
+    """Perfect but degenerate holdout agreement must not clear the gate.
+
+    Every human label and every judge score is 5, so Cohen's kappa is undefined.
+    Scoring that as 1.0 would clear the 0.60 threshold on zero evidence.
+    """
+    judgment = _calibration_judgment(tmp_path, judge_family="qwen", candidate_family="llama")
+    payload = json.loads(judgment.read_text(encoding="utf-8"))
+    for item in payload["items"]:
+        if str(item["case_id"]).startswith("holdout-"):
+            item["score"] = 5
+    judgment.write_text(json.dumps(payload), encoding="utf-8")
+
+    holdout = tmp_path / "labels-holdout-identical.jsonl"
+    holdout.write_text(
+        "".join(
+            json.dumps({**json.loads(line), "value": 5}) + "\n"
+            for line in (JUDGE / "labels-holdout.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ),
+        encoding="utf-8",
+    )
+
+    artifact = validate_calibration(
+        judgment_path=judgment,
+        labels_dev_path=JUDGE / "labels-dev.jsonl",
+        labels_holdout_path=holdout,
+        rubric_path=JUDGE / "rubric-pointwise.yaml",
+        output_path=tmp_path / "calibration-degenerate.json",
+    )
+
+    assert artifact.holdout.n == 150
+    assert artifact.holdout.agreement is None
+    assert artifact.family_separation_ok is True
+    assert artifact.gating_allowed is False
+    assert any(reason.startswith("AGREEMENT_UNDEFINED") for reason in artifact.block_reasons)
+
+
+def test_attach_refuses_judgment_whose_holdout_agreement_was_undefined(tmp_path: Path) -> None:
+    """The undefined-agreement calibration stays unattachable, not merely unflagged."""
+    judgment = _calibration_judgment(tmp_path, judge_family="qwen", candidate_family="llama")
+    payload = json.loads(judgment.read_text(encoding="utf-8"))
+    for item in payload["items"]:
+        if str(item["case_id"]).startswith("holdout-"):
+            item["score"] = 5
+    judgment.write_text(json.dumps(payload), encoding="utf-8")
+    holdout = tmp_path / "labels-holdout-identical.jsonl"
+    holdout.write_text(
+        "".join(
+            json.dumps({**json.loads(line), "value": 5}) + "\n"
+            for line in (JUDGE / "labels-holdout.jsonl").read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ),
+        encoding="utf-8",
+    )
+    calibration_path = tmp_path / "calibration-degenerate.json"
+    validate_calibration(
+        judgment_path=judgment,
+        labels_dev_path=JUDGE / "labels-dev.jsonl",
+        labels_holdout_path=holdout,
+        rubric_path=JUDGE / "rubric-pointwise.yaml",
+        output_path=calibration_path,
+    )
+
+    with pytest.raises(JudgeError) as exc:
+        attach_calibration(
+            judgment_path=judgment,
+            calibration_path=calibration_path,
+            output_path=tmp_path / "judgment-degenerate.json",
+        )
+
+    assert exc.value.code == "UNCALIBRATED_JUDGE"
+
+
 def test_calibration_gate_false_when_holdout_agreement_below_threshold(
     tmp_path: Path,
 ) -> None:
@@ -383,16 +527,15 @@ def test_calibration_gate_true_when_holdout_high_even_if_dev_low(
     assert artifact.block_reasons == []
 
 
-def test_duplicate_judgment_case_ids_do_not_inflate_holdout_n(tmp_path: Path) -> None:
-    """Repeated judgment items for one labeled case must not pad n_holdout.
+def test_duplicate_judgment_case_ids_are_hard_error_not_holdout_padding(tmp_path: Path) -> None:
+    """Repeated judgment items for one labeled case must be refused outright.
 
-    Without a uniqueness (or reject-duplicates) guard, 150 identical case_id rows
-    plus one holdout label falsely clear min_holdout_n and open the gate.
+    Without the guard, 150 identical case_id rows plus one holdout label would
+    clear min_holdout_n on volume alone and open the gate.
     """
     judgment = _calibration_judgment(tmp_path, judge_family="qwen", candidate_family="llama")
     payload = json.loads(judgment.read_text(encoding="utf-8"))
     holdout_case = "holdout-dup-00001"
-    dev_case = "dev-dup-00001"
     template = {
         "evidence": {"candidate_text": "dup"},
         "reasoning": "Matches human label.",
@@ -401,14 +544,10 @@ def test_duplicate_judgment_case_ids_do_not_inflate_holdout_n(tmp_path: Path) ->
     payload["items"] = [
         {**template, "case_id": holdout_case, "generation_id": f"gen-h-{index}", "score": 5}
         for index in range(150)
-    ] + [
-        {**template, "case_id": dev_case, "generation_id": f"gen-d-{index}", "score": 4}
-        for index in range(50)
     ]
     judgment.write_text(json.dumps(payload), encoding="utf-8")
 
     labels_holdout = tmp_path / "labels-holdout-dup.jsonl"
-    labels_dev = tmp_path / "labels-dev-dup.jsonl"
     labels_holdout.write_text(
         json.dumps(
             {
@@ -425,38 +564,20 @@ def test_duplicate_judgment_case_ids_do_not_inflate_holdout_n(tmp_path: Path) ->
         + "\n",
         encoding="utf-8",
     )
-    labels_dev.write_text(
-        json.dumps(
-            {
-                "schema_version": "0.1",
-                "rubric_name": "helpfulness",
-                "rubric_version": "1.0.0",
-                "case_id": dev_case,
-                "label_shape": "ordinal_score",
-                "value": 4,
-                "split": "dev",
-                "label_set_id": "helpfulness-dev-dup-v1",
-            }
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+    calibration_path = tmp_path / "calibration-dup.json"
 
-    try:
-        artifact = validate_calibration(
+    with pytest.raises(JudgeError) as exc:
+        validate_calibration(
             judgment_path=judgment,
-            labels_dev_path=labels_dev,
+            labels_dev_path=JUDGE / "labels-dev.jsonl",
             labels_holdout_path=labels_holdout,
             rubric_path=JUDGE / "rubric-pointwise.yaml",
-            output_path=tmp_path / "calibration-dup.json",
+            output_path=calibration_path,
         )
-    except JudgeError as exc:
-        assert "duplicate" in str(exc).lower() or "case_id" in str(exc).lower()
-        return
 
-    assert artifact.holdout.n == 1
-    assert artifact.gating_allowed is False
-    assert any("n_holdout=" in reason for reason in artifact.block_reasons)
+    assert exc.value.code == "DUPLICATE_CASE_ID"
+    assert holdout_case in str(exc.value)
+    assert not calibration_path.exists()
 
 
 def test_calibration_gate_false_when_dev_n_below_min_dev_n(tmp_path: Path) -> None:
@@ -501,8 +622,30 @@ def test_calibration_gate_false_when_dev_missing(tmp_path: Path) -> None:
     assert "missing --labels-dev" in artifact.block_reasons
 
 
-def test_calibration_gate_false_on_family_conflict(tmp_path: Path) -> None:
-    judgment = _calibration_judgment(tmp_path, judge_family="llama", candidate_family="llama")
+@pytest.mark.parametrize(
+    ("judge_family", "candidate_family"),
+    [
+        ("llama", "llama"),
+        ("Qwen", "qwen"),
+        ("QWEN", "qwen"),
+        ("llama", "LLaMA"),
+        (" Llama ", "llama"),
+    ],
+)
+def test_calibration_gate_false_on_family_conflict(
+    tmp_path: Path,
+    judge_family: str,
+    candidate_family: str,
+) -> None:
+    """Family separation is case- and whitespace-insensitive, and fails closed.
+
+    Dropping the normalization would let ``Qwen`` judge ``qwen`` clear the gate.
+    """
+    judgment = _calibration_judgment(
+        tmp_path,
+        judge_family=judge_family,
+        candidate_family=candidate_family,
+    )
     artifact = validate_calibration(
         judgment_path=judgment,
         labels_dev_path=JUDGE / "labels-dev.jsonl",
@@ -510,9 +653,9 @@ def test_calibration_gate_false_on_family_conflict(tmp_path: Path) -> None:
         rubric_path=JUDGE / "rubric-pointwise.yaml",
         output_path=tmp_path / "calibration.json",
     )
-    assert artifact.gating_allowed is False
     assert artifact.family_separation_ok is False
     assert "JUDGE_FAMILY_CONFLICT" in artifact.block_reasons
+    assert artifact.gating_allowed is False
 
 
 def test_calibration_gate_false_below_holdout_n(tmp_path: Path) -> None:
@@ -786,8 +929,6 @@ def test_cli_judge_validate_file_primary_without_database_url(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from evalharness.config import get_settings
-
     judgment = _calibration_judgment(tmp_path, judge_family="qwen", candidate_family="llama")
     monkeypatch.delenv("DATABASE_URL", raising=False)
     get_settings.cache_clear()

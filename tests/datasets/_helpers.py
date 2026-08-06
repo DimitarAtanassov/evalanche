@@ -1,4 +1,4 @@
-"""Shared helpers for Phase 4 dataset tests (public-seam fixtures only)."""
+"""Shared helpers for dataset tests (public-seam fixtures only)."""
 
 from __future__ import annotations
 
@@ -77,7 +77,7 @@ def perfect_output(case: Case) -> str:
     raise AssertionError(f"No expected output for {case.external_id}")
 
 
-def perfect_generation(case: Case, *, run_id: str = "phase4-mock") -> Generation:
+def perfect_generation(case: Case, *, run_id: str = "dataset-mock") -> Generation:
     return Generation(
         id=None,
         run_id=run_id,

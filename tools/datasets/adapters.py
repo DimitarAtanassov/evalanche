@@ -360,20 +360,20 @@ ADAPTERS: dict[str, AdapterSpec] = {
         metrics=("rouge_l", "chrf_pp"),
         parser=_summaries,
     ),
-    "scifact": _spec(
-        name="scifact",
-        source_id="scifact",
-        dataset_name="scifact",
+    "scifact_prejoined": _spec(
+        name="scifact_prejoined",
+        source_id="scifact_prejoined",
+        dataset_name="scifact-prejoined",
         license_id="unknown",
         redistributable=False,
         risk="medium",
         metrics=("retrieval_ndcg_10",),
         parser=_synthetic,
     ),
-    "docred": _spec(
-        name="docred",
-        source_id="docred",
-        dataset_name="docred",
+    "docred_prejoined": _spec(
+        name="docred_prejoined",
+        source_id="docred_prejoined",
+        dataset_name="docred-prejoined",
         license_id="unknown",
         redistributable=False,
         risk="high",
@@ -388,7 +388,7 @@ def synthetic_spec(name: str, metrics: tuple[str, ...]) -> AdapterSpec:
     return _spec(
         name=name,
         source_id=name,
-        dataset_name=name.replace("_", "-"),
+        dataset_name=f"phase4-{name.replace('_', '-')}",
         license_id="CC0-1.0",
         redistributable=True,
         risk="low",

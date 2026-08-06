@@ -5,6 +5,7 @@ from __future__ import annotations
 from importlib.metadata import entry_points
 
 from evalharness.core.protocols import Metric
+from evalharness.scoring.catalog import builtin_metrics
 from evalharness.scoring.exact_match import ExactMatchMetric
 from evalharness.scoring.normalizer import Normalizer, NormalizerConfig
 
@@ -33,8 +34,6 @@ class MetricRegistry:
     def defaults(cls) -> MetricRegistry:
         registry = cls()
         registry.register(ExactMatchMetric(Normalizer(NormalizerConfig())))
-        from evalharness.scoring.catalog import builtin_metrics
-
         for metric in builtin_metrics():
             registry.register(metric)
         return registry

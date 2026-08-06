@@ -38,6 +38,8 @@ class PipelineProgress:
             console=console,
             disable=not console.is_terminal,
             transient=False,
+            redirect_stdout=False,
+            redirect_stderr=False,
         )
         self._task: TaskID | None = None
         self._stage = ""

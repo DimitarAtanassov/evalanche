@@ -7,7 +7,7 @@ contamination_risk: low
 content_sha256: c93ff80bd83bf134081428285e0f570e80cd04f44d2508b6724b80dd892746b9
 created_at: '2026-08-05'
 license: CC0-1.0
-name: synthetic-retrieval
+name: phase4-synthetic-retrieval
 pii_scrub_procedure: docs/datasets.md#privacy-and-pii
 pii_scrubbed: true
 schema_version: '0.1'
@@ -24,4 +24,4 @@ split: dev
 task_metrics:
 - retrieval_ndcg_10
 tier: smoke
-version: 1.0.0
+version: 1.0.0+materialized.e96acb4ddc22cbc1

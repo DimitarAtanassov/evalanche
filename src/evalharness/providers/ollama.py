@@ -100,7 +100,11 @@ class OllamaProvider:
         if req.stop:
             payload["options"]["stop"] = req.stop
         if req.response_format:
-            payload["format"] = req.response_format.get("json_schema", req.response_format)
+            json_schema = req.response_format.get("json_schema")
+            if isinstance(json_schema, dict) and isinstance(json_schema.get("schema"), dict):
+                payload["format"] = json_schema["schema"]
+            else:
+                payload["format"] = json_schema or req.response_format
         if req.tools:
             payload["tools"] = [
                 {

@@ -15,6 +15,7 @@ htmlcov/
 *.html.report
 reports/
 .DS_Store
+.tmp-chrome*/
 DEFERRED.md
 docs/private/
 docs/private.templates/

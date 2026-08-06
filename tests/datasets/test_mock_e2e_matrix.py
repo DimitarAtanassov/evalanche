@@ -208,7 +208,7 @@ def test_assemble_run_report_publishable_gate_and_schema(
         assert "raw_response" not in example
         assert example["output"] is not None
         assert example["output"].endswith("…")
-        assert len(example["output"]) == EXAMPLE_TEXT_LIMIT + 1
+        assert len(example["output"]) == EXAMPLE_TEXT_LIMIT
 
 
 @pytest.mark.parametrize("dataset_path", smoke_paths(), ids=lambda path: path.name)
