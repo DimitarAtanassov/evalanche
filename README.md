@@ -41,76 +41,159 @@ Harness failures (a provider timing out, garbage output) are counted separately 
 
 ## What the reports look like
 
-Every run emits a self‑contained HTML dashboard (Altair / Vega‑Lite, no CDN). The
-screenshots below were regenerated from **real-world cache-only packs** (SQuAD
-v1.1 extractive QA and AG News topic classification) plus a multi-member suite,
-all driven with the deterministic **mock** provider so the demo stays offline and
-reproducible. Mock answers are intentionally wrong on these corpora (pass rate
-near zero); the dashboards still show publishability, coverage, CIs, slices, and
-latency the same way a live Ollama or OpenAI‑compatible run would.
+Screenshots below come from a **full Ollama end-to-end pass** (`llama3.2:1b`) over
+cache-only **SQuAD v1.1** and **AG News** packs plus synthetic fixtures that
+exercise other metric families. Artifacts live under `reports/demo/ollama/`
+(gitignored). Reproduce with Postgres + Ollama up, then:
 
-Reproduce the fetch → pin → materialize → run → compare → suite path with
-[`scripts/demo_realworld.sh`](scripts/demo_realworld.sh) (writes under `.cache/`
-and `reports/demo/`; snapshots stay out of git).
+```bash
+docker compose up -d postgres ollama
+ollama pull llama3.2:1b
+./scripts/demo_realworld.sh --provider ollama --model llama3.2:1b
+```
 
-### Real-world single-run dashboards
+Numbers cited are from that run (small smoke packs, 1B model). They illustrate
+how to read the UI, not a claim about SOTA quality.
 
-**SQuAD v1.1** (50-case CI pack, `squad_f1` / `exact_match`):
+### Publishability and KPIs
 
-<img src="docs/assets/realworld-squad-dashboard.png" alt="SQuAD v1.1 evaluation dashboard from a mock provider CI pack" width="900" />
+<img src="docs/assets/kpi-publishability.png" alt="KPI strip: pass rate with Wilson CI, coverage, cost, latency p95" width="900" />
 
-**AG News** (50-case CI pack, `classification`):
+**How to read it.** The green badges are harness honesty gates, not model
+quality: run completed, all planned generations written, coverage at or above
+the floor (here 98%). **Pass rate** is the fraction of scored cases that pass
+the primary metric, with a **Wilson 95% CI**. Wide intervals on small `n` are
+expected. Coverage near 100% with a low pass rate means the pipeline worked and
+the model simply scored poorly (or the metric is strict). Cost stays honest
+when the provider reports pricing; unpriced generations fail closed on money
+gates elsewhere.
 
-<img src="docs/assets/realworld-agnews-dashboard.png" alt="AG News classification evaluation dashboard from a mock provider CI pack" width="900" />
+### Extractive QA (`squad_f1`, `exact_match`)
 
-### Suite dashboard (real-world + synthetic members)
+SQuAD v1.1 smoke pack (20 cases). Primary metric `squad_f1` pass rate **35%**
+(Wilson 95% CI about 18–57%). Exact match was harder on this 1B model: F1 can
+credit partial token overlap while EM requires a normalized string match.
 
-`evalctl suite build` folds SQuAD, AG News, and synthetic members into one
-leaderboard (coverage matrix, primary metrics, latency):
+<img src="docs/assets/realworld-squad-dashboard.png" alt="Ollama SQuAD dashboard showing non-zero squad_f1 pass rate" width="900" />
 
-<img src="docs/assets/realworld-suite-dashboard.png" alt="Suite dashboard mixing SQuAD, AG News, and synthetic members" width="900" />
+![Metric scores with 95% CI for squad_f1 and exact_match](docs/assets/chart-metric-scores.png)
 
-Chart close‑ups from the same suite:
+**How to read it.** Each bar is a metric×slice (or overall) point estimate with
+an error bar for the CI method labeled on the report (Wilson for rates). Compare
+metrics on the same cases: if `squad_f1` rises while `exact_match` stays flat,
+the model is getting closer without hitting exact strings. Do not treat the CI
+midpoint as a leaderboard score without `n`.
+
+![Sampled SQuAD cases with reference vs model output](docs/assets/metric-qa-sampled-cases.png)
+
+**How to read it.** Sampled cases are for debugging, not the denominator. Check
+whether failures are empty answers, verbose answers that hurt EM, or wrong
+spans. Latency per case sits beside the score so slow outliers are visible.
+
+### Classification (`classification`)
+
+AG News smoke (20 cases) with constrained label output. On `llama3.2:1b` this
+pass rate was **0%** (CI up to ~16%): the small model often fails to emit an
+exact allow-listed label even when the topic is clear.
+
+<img src="docs/assets/metric-classification-dashboard.png" alt="AG News classification dashboard under Ollama" width="900" />
+
+**How to read it.** Classification here is fail-closed on the label set: near
+misses and free-form prose count as wrong. Low pass rate with high coverage
+points to prompt or model capability, not a broken runner. Slice charts (when
+present) show whether one domain drives the miss rate.
+
+### Numeric assertion (`numeric_assertion`)
+
+Synthetic finance and math packs (final number only). Observed pass rates on
+this run: finance **20%**, math **40%** (wide CIs at `n=5`).
+
+<img src="docs/assets/metric-numeric-dashboard.png" alt="Numeric assertion dashboard for synthetic math under Ollama" width="900" />
+
+![Finance numeric_assertion run](docs/assets/run-finance-slices.png)
+
+**How to read it.** The metric extracts a final numeric answer and compares it
+to the reference. Extra prose usually fails. Use these packs to verify that
+decode limits and prompts keep the model in "number only" mode before you trust
+a larger finance corpus.
+
+### Summarization overlap (`rouge_l`, `chrf_pp`)
+
+Synthetic summarization smoke. Primary `rouge_l` pass rate **60%** on this run
+(CI roughly 23–88% at `n=5`).
+
+<img src="docs/assets/metric-summarization-dashboard.png" alt="Summarization dashboard with rouge_l under Ollama" width="900" />
+
+**How to read it.** ROUGE/chrF are overlap metrics, not factuality judges. A
+high score can still hallucinate; a low score can still be faithful but
+paraphrased. Pair them with RAG/judge signals when truthfulness matters.
+
+### Structured extraction (`json_validity`, `json_field_f1`)
+
+Synthetic extraction smoke. Primary `json_validity` was **0%** here: the 1B
+model did not reliably emit parseable JSON under the constrained template.
+
+<img src="docs/assets/metric-extraction-dashboard.png" alt="JSON extraction dashboard under Ollama" width="900" />
+
+**How to read it.** `json_validity` is a gate on well-formed JSON; field F1
+scores content only after parse succeeds. Zero validity means field F1 never
+gets a fair shot. Fix schema prompting or use a stronger model before tuning
+field-level scores.
+
+### Slices and reliability
+
+![Pass rate by slice](docs/assets/chart-slice-pass-rate.png)
+
+**How to read it.** Bars are pass rate within a slice key (for SQuAD, often
+`domain` / `source_title`). A flat low chart means uniform weakness; a few tall
+bars mean the headline number hides concentration in easy slices.
+
+![Generation outcomes and harness vs model failures](docs/assets/chart-outcome-breakdown.png)
+
+**How to read it.** Reliability separates **model** outcomes from **harness**
+failures (timeouts, provider errors). Harness failures are excluded from the
+quality denominator so infra blips do not look like worse accuracy.
+
+### Latency and cost
+
+![Latency percentiles](docs/assets/chart-latency-percentiles.png)
+
+**How to read it.** Prefer p50/p95/p99 over the mean. On this Ollama SQuAD
+smoke, p95 was about **2.4 s** per generation. Spikes at p99/max flag tail
+latency under concurrency. Cost KPIs stay blank or zero when the provider does
+not report price; that is intentional honesty, not "free."
+
+### Suite rollup (multi-metric leaderboard)
+
+`evalctl suite build` folds the Ollama members (SQuAD, AG News, finance, math,
+summarization, extraction, and related synthetics) into one offline HTML suite:
+
+<img src="docs/assets/realworld-suite-dashboard.png" alt="Suite dashboard across Ollama metric families" width="900" />
+
+![Suite coverage matrix](docs/assets/suite-coverage-matrix.png)
 
 ![Suite primary-metric leaderboard](docs/assets/suite-leaderboard.png)
 
 ![Suite latency by member](docs/assets/suite-latency.png)
 
-### Single‑run chart detail (SQuAD CI)
+**How to read it.** The coverage matrix answers "did every member finish
+honestly?" The primary-metric chart compares different tasks on their own
+metrics (do not average `squad_f1` with `rouge_l`). Latency by member shows
+which packs dominate wall time. Paired compares (when declared) carry deltas
+and CIs for baseline vs candidate on the **same** cases.
 
-Metric scores with 95% confidence intervals, pass rate by slice, outcomes, and
-latency percentiles:
+### Surfaces exercised (Ollama)
 
-![Metric scores with 95% CI](docs/assets/chart-metric-scores.png)
+| Surface | Result in this demo |
+|---------|---------------------|
+| `dataset materialize` / `validate` | SQuAD + AG News smoke packs from pinned snapshots |
+| `run` (`--provider ollama`) | Non-zero `squad_f1`, `numeric_assertion`, `rouge_l`; strict label/JSON still hard for 1B |
+| `runs rescore` | Zero-inference rescore of SQuAD |
+| `runs compare` | Baseline `temperature=0` vs candidate `temperature=0.2` on SQuAD |
+| `suite validate` / `build` | Eight-member suite HTML/JSON |
 
-![Pass rate by slice](docs/assets/chart-slice-pass-rate.png)
-
-![Generation outcomes](docs/assets/chart-outcome-breakdown.png)
-
-![End-to-end latency percentiles](docs/assets/chart-latency-percentiles.png)
-
-### Industry example (finance synthetic)
-
-Finance pack scored with `numeric_assertion` (mock provider):
-
-![Finance numeric_assertion dashboard](docs/assets/run-finance-slices.png)
-
-### Surfaces exercised in the demo
-
-| Surface | What we ran |
-|---------|-------------|
-| `dataset materialize` / `dataset-validate` | SQuAD + AG News smoke (20) and ci (50) packs from pinned local snapshots |
-| `run` | Mock provider on those packs + synthetic industry fixtures |
-| `runs rescore` | Zero-inference rescore of the SQuAD smoke run |
-| `runs compare` | Paired baseline vs candidate SQuAD mock configs (`--allow-compatible`) |
-| `suite validate` / `suite build` | Multi-member suite HTML/JSON |
-| `power` / `calibrate` / `score` | Sample-size, threshold calibration, and offline JSONL scoring helpers |
-
-Judge / RAG need a live chat model (Ollama was down for this screenshot pass).
-Gates / matrix CLIs are not on the default `evalctl` entry in this checkout.
-
-PoC fixture for CI remains at [`fixtures/poc/report.html`](fixtures/poc/report.html)
-(also mirrored as `docs/assets/report-dashboard.png`).
+Judge / RAG can use the same Ollama endpoint; gates / matrix CLIs are not on the
+default `evalctl` entry in this checkout.
 
 ## How it is used
 
@@ -178,9 +261,10 @@ uv run evalctl suite build --manifest suite.yaml --output suite-output
 
 ```bash
 chmod +x scripts/demo_realworld.sh
-./scripts/demo_realworld.sh
+docker compose up -d postgres ollama && ollama pull llama3.2:1b
+./scripts/demo_realworld.sh --provider ollama --model llama3.2:1b
 # snapshots + pins under .cache/datasets/ (gitignored)
-# packs under .cache/packs/; HTML/JSON under reports/demo/
+# packs under .cache/packs/; HTML/JSON under reports/demo/ollama/
 ```
 
 ### Judge and RAG evidence (informational until calibrated)
