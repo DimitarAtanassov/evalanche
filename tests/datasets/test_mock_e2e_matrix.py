@@ -185,7 +185,7 @@ def test_assemble_run_report_publishable_gate_and_schema(
     )
     payload = report_to_json(publishable)
 
-    assert payload["schema_version"] == "2.1"
+    assert payload["schema_version"] == "2.2"
     assert publishable.publishable is True
     assert blocked.publishable is False
     assert under_covered.publishable is False

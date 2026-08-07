@@ -7,15 +7,22 @@ from pathlib import Path
 
 import typer
 
-from evalharness.cli._common import _emit_json
+from evalharness.cli._common import _emit_json, console
 from evalharness.scoring.calibration import calibrate_threshold
 
 
 def calibrate(inputs: Path = typer.Argument(..., help="JSONL with label and score")) -> None:
     """Calibrate a threshold on development data."""
-    rows = [json.loads(line) for line in inputs.read_text(encoding="utf-8").splitlines()]
-    result = calibrate_threshold(
-        [bool(row["label"]) for row in rows],
-        [float(row["score"]) for row in rows],
-    )
-    _emit_json(result)
+    try:
+        rows = [json.loads(line) for line in inputs.read_text(encoding="utf-8").splitlines()]
+        result = calibrate_threshold(
+            [bool(row["label"]) for row in rows],
+            [float(row["score"]) for row in rows],
+        )
+        _emit_json(result)
+    except OSError as exc:
+        console.print(f"[red]IO_ERROR[/red] {exc}")
+        raise typer.Exit(2) from exc
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        console.print(f"[red]ERROR[/red] {exc}")
+        raise typer.Exit(1) from exc

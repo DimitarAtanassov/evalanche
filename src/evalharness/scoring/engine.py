@@ -43,7 +43,7 @@ class ScoringEngine:
         *,
         run_store: RunStoreFactory | None = None,
     ) -> None:
-        self.registry = registry or MetricRegistry.defaults()
+        self.registry = registry or MetricRegistry.discover()
         self.batch_size = batch_size
         self.max_slice_cardinality = max_slice_cardinality
         self.normalizer = Normalizer(NormalizerConfig())

@@ -10,8 +10,11 @@ OVERALL_SLICE = "__overall__"
 PRIMARY_METRIC = "exact_match"
 
 # Published artifact contracts. Changing one is a schema break for its readers.
-REPORT_SCHEMA_VERSION = "2.1"
+REPORT_SCHEMA_VERSION = "2.2"
 COMPARE_SCHEMA_VERSION = "1.0"
 SUITE_SCHEMA_VERSION = "0.1"
+MATRIX_SCHEMA_VERSION = "0.1"
+BASELINE_SCHEMA_VERSION = "0.1"
+GATES_SCHEMA_VERSION = "0.1"
 # Schema shared by file-primary judge, calibration, and RAG evidence artifacts.
 SUPPLEMENT_SCHEMA_VERSION = "0.1"

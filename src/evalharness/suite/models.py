@@ -103,7 +103,7 @@ class MetricAggregate(StrictModel):
 
 
 class RunArtifact(BaseModel):
-    """Required projection of a run report 2.1."""
+    """Required projection of a run report 2.2."""
 
     model_config = ConfigDict(extra="allow", strict=True)
 
@@ -128,6 +128,7 @@ class RunArtifact(BaseModel):
     finish_reasons: dict[str, int] = Field(default_factory=dict)
     harness_failures: int = Field(default=0, ge=0)
     cost_usd_total: float = 0.0
+    cost_unpriced_generations: int = Field(ge=0)
     cost_per_correct: float | None = None
     retries: int = Field(default=0, ge=0)
     cache_hits: int = Field(default=0, ge=0)

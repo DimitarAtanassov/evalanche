@@ -26,6 +26,8 @@ from evalharness.core.models import (
 )
 from evalharness.core.ports import RunStoreFactory
 from evalharness.core.protocols import Provider
+from evalharness.execution.errors import ResumeError as ResumeError
+from evalharness.execution.helpers import validate_decode_params
 from evalharness.hashing import config_hash, sha256_canonical
 from evalharness.observability import (
     PipelineStage,
@@ -217,6 +219,7 @@ class Executor:
         tenant_id: str,
         run_id: uuid.UUID | None = None,
     ) -> uuid.UUID:
+        validate_decode_params(decode_params)
         cfg_sha = config_hash(
             dataset_sha256=dataset_sha256,
             prompt_template_sha256=prompt_template_sha256,

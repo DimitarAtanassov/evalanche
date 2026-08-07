@@ -26,6 +26,7 @@ class ErrorClass(StrEnum):
     NON_RETRYABLE_AUTH = "non_retryable_auth"
     MODEL_REFUSAL = "model_refusal"
     CONTENT_FILTER = "content_filter"
+    CIRCUIT_OPEN = "circuit_open"
 
 
 class FailureOutcome(StrEnum):

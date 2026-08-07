@@ -354,6 +354,15 @@ class RunRepository:
     async def get_run(self, run_id: uuid.UUID) -> RunRow | None:
         return await self.session.get(RunRow, run_id)
 
+    async def get_dataset(self, dataset_id: int) -> DatasetRow | None:
+        return await self.session.get(DatasetRow, dataset_id)
+
+    async def get_model_version(self, model_version_id: int) -> ModelVersionRow | None:
+        return await self.session.get(ModelVersionRow, model_version_id)
+
+    async def get_prompt_template(self, prompt_template_id: int) -> PromptTemplateRow | None:
+        return await self.session.get(PromptTemplateRow, prompt_template_id)
+
     async def get_cache(self, cache_key: str) -> dict[str, Any] | None:
         row = await self.session.get(ResponseCacheRow, cache_key)
         return row.response if row else None

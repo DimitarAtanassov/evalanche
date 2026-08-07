@@ -6,7 +6,9 @@ import typer
 
 from evalharness.cli.calibrate import calibrate
 from evalharness.cli.dataset import dataset_app, dataset_validate
+from evalharness.cli.gates import gates_app
 from evalharness.cli.judge import judge_app
+from evalharness.cli.matrix import baseline_app, matrix_app
 from evalharness.cli.power import power
 from evalharness.cli.rag import rag_app
 from evalharness.cli.run import run_eval
@@ -30,6 +32,9 @@ app.add_typer(dataset_app, name="dataset")
 app.add_typer(suite_app, name="suite")
 app.add_typer(judge_app, name="judge")
 app.add_typer(rag_app, name="rag")
+app.add_typer(matrix_app, name="matrix")
+app.add_typer(baseline_app, name="baseline")
+app.add_typer(gates_app, name="gates")
 
 # Kept importable: scripts and tests drive the services directly, while the commands
 # above wrap them with console output and exit codes.

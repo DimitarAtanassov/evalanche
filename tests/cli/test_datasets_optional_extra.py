@@ -105,8 +105,12 @@ def hide_dataset_factory() -> Iterator[None]:
 
 def _reload_cli() -> ModuleType:
     """Re-import ``evalharness.cli`` after factory visibility may have changed."""
-    for name in ("evalharness.cli.dataset", "evalharness.cli"):
-        sys.modules.pop(name, None)
+    # Drop the package and every submodule. Leaving a cached submodule (e.g.
+    # ``evalharness.cli.runs``) while replacing the parent package leaves the
+    # new parent without a bound attribute, which breaks dotted monkeypatches.
+    for name in list(sys.modules):
+        if name == "evalharness.cli" or name.startswith("evalharness.cli."):
+            sys.modules.pop(name, None)
     return importlib.import_module("evalharness.cli")
 
 

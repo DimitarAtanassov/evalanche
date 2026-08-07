@@ -4,9 +4,19 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def redacted_database_url(url: str) -> str:
+    """Strip userinfo from a database URL for safe logging."""
+    parts = urlsplit(url)
+    netloc = parts.netloc
+    if "@" in netloc:
+        netloc = netloc.rsplit("@", 1)[1]
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
 
 class Settings(BaseSettings):
@@ -15,11 +25,12 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = Field(
-        default="postgresql+asyncpg://evalharness:evalharness@localhost:5432/evalharness"
+        default="postgresql+asyncpg://evalharness:evalharness@localhost:5432/evalharness",
+        repr=False,
     )
     ollama_base_url: str = "http://localhost:11434"
     openai_compatible_base_url: str | None = None
-    openai_compatible_api_key: str | None = None
+    openai_compatible_api_key: SecretStr | None = None
     openai_compatible_model_revision: str | None = None
     harness_version: str = "0.1.0"
     git_sha: str = "local"
@@ -45,6 +56,10 @@ class Settings(BaseSettings):
     judge_provider_tpm: int = Field(default=60_000, ge=1)
     nli_provider_rpm: int = Field(default=60, ge=1)
     nli_provider_tpm: int = Field(default=60_000, ge=1)
+
+    @property
+    def database_url_for_logs(self) -> str:
+        return redacted_database_url(self.database_url)
 
 
 @lru_cache

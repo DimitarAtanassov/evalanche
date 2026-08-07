@@ -25,16 +25,23 @@ def runs_rescore(
 ) -> None:
     """Idempotently rescore stored generations with zero inference."""
     setup_logging()
-    context = build_app_context()
-    with PipelineProgress(console) as pipeline_progress:
-        count = asyncio.run(
-            context.scoring_engine().rescore_run(
-                uuid.UUID(run_id),
-                [name.strip() for name in metrics.split(",") if name.strip()],
-                progress=pipeline_progress,
+    try:
+        context = build_app_context()
+        with PipelineProgress(console) as pipeline_progress:
+            count = asyncio.run(
+                context.scoring_engine().rescore_run(
+                    uuid.UUID(run_id),
+                    [name.strip() for name in metrics.split(",") if name.strip()],
+                    progress=pipeline_progress,
+                )
             )
-        )
-    _emit_json({"run_id": run_id, "scores_processed": count, "inference_calls": 0})
+        _emit_json({"run_id": run_id, "scores_processed": count, "inference_calls": 0})
+    except OSError as exc:
+        console.print(f"[red]IO_ERROR[/red] {exc}")
+        raise typer.Exit(2) from exc
+    except (KeyError, TypeError, ValueError) as exc:
+        console.print(f"[red]ERROR[/red] {exc}")
+        raise typer.Exit(1) from exc
 
 
 @runs_app.command("compare")
@@ -46,17 +53,24 @@ def runs_compare(
     output: Path | None = typer.Option(None, "--output"),
 ) -> None:
     """Compare aligned case/repeat outcomes with paired inference."""
-    context = build_app_context()
-    artifact = asyncio.run(
-        compare_runs(
-            uuid.UUID(baseline_run_id),
-            uuid.UUID(candidate_run_id),
-            metric,
-            allow_compatible,
-            run_store=context.run_store,
+    try:
+        context = build_app_context()
+        artifact = asyncio.run(
+            compare_runs(
+                uuid.UUID(baseline_run_id),
+                uuid.UUID(candidate_run_id),
+                metric,
+                allow_compatible,
+                run_store=context.run_store,
+            )
         )
-    )
-    payload = json.dumps(artifact, indent=2, allow_nan=False)
-    if output:
-        output.write_text(payload, encoding="utf-8")
-    _emit_json(artifact)
+        payload = json.dumps(artifact, indent=2, allow_nan=False)
+        if output:
+            output.write_text(payload, encoding="utf-8")
+        _emit_json(artifact)
+    except OSError as exc:
+        console.print(f"[red]IO_ERROR[/red] {exc}")
+        raise typer.Exit(2) from exc
+    except (KeyError, TypeError, ValueError) as exc:
+        console.print(f"[red]ERROR[/red] {exc}")
+        raise typer.Exit(1) from exc

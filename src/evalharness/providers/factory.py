@@ -74,9 +74,14 @@ def build_managed_provider(
             raise ValueError(
                 "OPENAI_COMPATIBLE_BASE_URL and OPENAI_COMPATIBLE_MODEL_REVISION are required"
             )
+        api_key = (
+            settings.openai_compatible_api_key.get_secret_value()
+            if settings.openai_compatible_api_key is not None
+            else None
+        )
         config = OpenAICompatibleConfig(
             base_url=settings.openai_compatible_base_url,
-            api_key=settings.openai_compatible_api_key,
+            api_key=api_key,
             model_revision=settings.openai_compatible_model_revision,
             concurrency=concurrency,
             **limits,

@@ -18,8 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from evalharness.core.enums import FailureOutcome, FinishReason
 from evalharness.core.models import Case, Generation
 from evalharness.store.models import (
+    DatasetRow,
     GenerationRow,
     MetricAggregateRow,
+    ModelVersionRow,
+    PromptTemplateRow,
     RunRow,
     ScoreRow,
 )
@@ -73,6 +76,12 @@ class RunStore(Protocol):
     async def update_run_status(self, run_id: uuid.UUID, status: str) -> None: ...
 
     async def get_run(self, run_id: uuid.UUID) -> RunRow | None: ...
+
+    async def get_dataset(self, dataset_id: int) -> DatasetRow | None: ...
+
+    async def get_model_version(self, model_version_id: int) -> ModelVersionRow | None: ...
+
+    async def get_prompt_template(self, prompt_template_id: int) -> PromptTemplateRow | None: ...
 
     async def get_cases_for_dataset(self, dataset_id: int) -> list[tuple[int, Case]]: ...
 

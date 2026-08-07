@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.1",
+  "schema_version": "2.2",
   "run_id": "00000000-0000-4000-8000-0000000000c1",
   "run_status": "completed",
   "config_sha256": "5816d4cf4a303f643bce6ffb3384a4c46724d6d79a51389d938e3ee8cd754882",
@@ -218,6 +218,7 @@
     }
   ],
   "cost_usd_total": 0.0,
+  "cost_unpriced_generations": 0,
   "cost_per_correct": 0.0,
   "retries": 0,
   "cache_hits": 0,

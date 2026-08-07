@@ -201,7 +201,7 @@
   ],
   "members": [
     {
-      "artifact_sha256": "591d138e27cc41ea85399b9db45737427b9c8e6b2830c81d261c19cbb3c1ce67",
+      "artifact_sha256": "3ac0cd25efba773c1217b1a5f0f4319bd0d0114002bf40ad1bed143676248bae",
       "coverage": 1.0,
       "dataset": "squad-smoke",
       "dataset_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
@@ -225,7 +225,7 @@
       "task": "qa_short"
     },
     {
-      "artifact_sha256": "fb1eb0c465d49240dcf407bb37a96c610f5f700d7a64d380c1bc8972bbe2010c",
+      "artifact_sha256": "bb5f4edafa902b5f9e5bf92ffeb8a175485e158916d63da792fddd3163d751a3",
       "coverage": 1.0,
       "dataset": "squad-smoke",
       "dataset_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
@@ -249,7 +249,7 @@
       "task": "qa_short"
     },
     {
-      "artifact_sha256": "e564b50baabdb31523cb74543ddc703ab26e0198b44e2f72c89d088a1fa737fd",
+      "artifact_sha256": "e5d57956c9e28847ff39705ed13f18950517c0220c09db48ac63d839985c9569",
       "coverage": 0.8,
       "dataset": "news-smoke",
       "dataset_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
@@ -273,7 +273,7 @@
       "task": "classification"
     },
     {
-      "artifact_sha256": "a1c7486d0bdf0b05dc7f2eda717c3996a28741b4f7d706855450a0d6d840d50f",
+      "artifact_sha256": "a4ff3d38d332b6892b6b4761b46c96207efdde420b23361f51a8341f486e7cec",
       "coverage": 1.0,
       "dataset": "news-smoke",
       "dataset_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
@@ -689,5 +689,5 @@
       "value": 1.0
     }
   ],
-  "suite_digest": "f4ccac256cecefbb2923ebb924a0700c19c43584eb447eb82156f1b5728ce4c7"
+  "suite_digest": "3d1f555f4712e147ce33ceef4e248adcd32d975cb120908375e58d270804c004"
 }

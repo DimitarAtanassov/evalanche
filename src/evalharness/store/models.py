@@ -138,7 +138,7 @@ class GenerationRow(Base):
     case_id: Mapped[int] = mapped_column(ForeignKey("cases.id"), nullable=False)
     repeat_idx: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     output: Mapped[str | None] = mapped_column(Text)
-    tool_calls: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    tool_calls: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB)
     finish_reason: Mapped[str | None] = mapped_column(Text)
     outcome: Mapped[str] = mapped_column(Text, nullable=False)
     prompt_tokens: Mapped[int | None] = mapped_column(Integer)

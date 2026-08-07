@@ -55,7 +55,7 @@ def test_poc_html_contains_run_id() -> None:
 
 def test_poc_report_includes_evaluation_context() -> None:
     report = json.loads((POC_DIR / "report.json").read_text(encoding="utf-8"))
-    assert report["schema_version"] == "2.1"
+    assert report["schema_version"] == "2.2"
     assert report["model"]["provider"] == "mock"
     assert report["model"]["resolved_version"] == MOCK_DIGEST
     assert report["dataset"]["name"]

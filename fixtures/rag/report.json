@@ -1,5 +1,6 @@
 {
   "case_examples": [],
+  "cost_unpriced_generations": 0,
   "coverage": 1.0,
   "coverage_floor": 0.98,
   "dataset": {
@@ -35,6 +36,6 @@
   "publishable": true,
   "run_id": "00000000-0000-4000-8000-00000000rag1",
   "run_status": "completed",
-  "schema_version": "2.1",
+  "schema_version": "2.2",
   "written_generations": 2
 }

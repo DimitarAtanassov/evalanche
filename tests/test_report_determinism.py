@@ -31,7 +31,7 @@ def _aggregate(slice_key: str, value: float, n: int) -> dict[str, object]:
 
 def _report() -> RunReport:
     return RunReport(
-        schema_version="2.1",
+        schema_version="2.2",
         run_id=RUN_ID,
         run_status="completed",
         config_sha256="c" * 64,
@@ -102,6 +102,7 @@ def _report() -> RunReport:
             }
         ],
         cost_usd_total=0.0,
+        cost_unpriced_generations=0,
         cost_per_correct=0.0,
         retries=0,
         cache_hits=0,

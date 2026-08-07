@@ -115,6 +115,11 @@ def estimate_tokens(req: GenerationRequest) -> int:
     return max(1, (len(text) + 2) // 3) + (req.max_tokens or 512)
 
 
+def estimate_embed_tokens(texts: list[str]) -> int:
+    """Same char-style estimate as generate, without a completion budget."""
+    return max(1, (sum(len(t) for t in texts) + 2) // 3)
+
+
 class ManagedProvider:
     def __init__(
         self,
@@ -173,13 +178,39 @@ class ManagedProvider:
         return replace(response, raw=raw)
 
     async def embed(self, model: str, texts: list[str]) -> list[list[float]]:
-        await self.requests.acquire()
+        state = self.breaker.before_call()
+        estimated = estimate_embed_tokens(texts)
+        queue_wait = await self.requests.acquire()
+        queue_wait += await self.tokens.acquire(estimated)
+        logger.debug(
+            "provider_capacity_acquired",
+            provider=self.name,
+            model=model,
+            queue_wait_ms=round(queue_wait, 2),
+            estimated_tokens=estimated,
+            breaker_state=state.value,
+            operation="embed",
+        )
         async with self.semaphore:
-            return await self.provider.embed(model, texts)
+            try:
+                vectors = await self.provider.embed(model, texts)
+            except Exception as exc:
+                self.breaker.failure()
+                logger.warning(
+                    "managed_provider_call_failed",
+                    provider=self.name,
+                    model=model,
+                    breaker_state=self.breaker.state.value,
+                    operation="embed",
+                    **exception_summary(exc),
+                )
+                raise
+            self.breaker.success()
+        return vectors
 
     def classify_error(self, exc: Exception) -> ErrorClass:
         if isinstance(exc, CircuitOpenError):
-            return ErrorClass.RETRYABLE_TRANSIENT
+            return ErrorClass.CIRCUIT_OPEN
         return self.provider.classify_error(exc)
 
     async def aclose(self) -> None:
