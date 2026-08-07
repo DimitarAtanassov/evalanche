@@ -1,0 +1,28 @@
+schema_version: "0.1"
+name: matrix-golden
+models:
+  - id: mock-small
+    provider: mock
+    model: mock-small
+    revision: "v1"
+    digest: null
+prompts:
+  - id: qa-v1
+    path: prompt.txt
+    digest: "111257c4b09adde7316cd18b874eaf8667bb9b0f15af4a46218b8533e27d95fe"
+datasets:
+  - id: squad-smoke
+    path: dataset.jsonl
+    digest: "f7340410651c36a4c0dba2408756f06b60d04577d79ea9172073a43e05dd8cae"
+    tier: smoke
+metrics:
+  - exact_match
+repeats: 1
+decode:
+  temperature: 0.0
+  max_tokens: 64
+cells:
+  - id: mock-small-qa-smoke
+    model: mock-small
+    prompt: qa-v1
+    dataset: squad-smoke

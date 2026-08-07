@@ -1,0 +1,35 @@
+schema_version: '0.1'
+name: gates-golden
+artifacts:
+  run_report: qa-baseline.json
+  compare: qa-compare.json
+  calibration: calibration-allowed.json
+gates:
+- name: coverage-ok
+  kind: coverage
+  severity: blocking
+- name: harness-rate
+  kind: harness_failure_rate
+  severity: blocking
+  max_rate: 0.05
+- name: no-paired-regression
+  kind: paired_regression
+  severity: blocking
+  min_abs_effect: 0.05
+- name: exact-match-floor
+  kind: quality_floor
+  severity: blocking
+  metric: exact_match
+  min_value: 0.5
+- name: latency-p95
+  kind: latency
+  severity: blocking
+  max_p95_ms: 100.0
+- name: cost-cap
+  kind: cost
+  severity: blocking
+  max_usd: 1.0
+- name: judge-calibrated
+  kind: calibrated_judge
+  severity: blocking
+  min_agreement: 0.6

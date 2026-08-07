@@ -1,0 +1,11 @@
+schema_version: '0.1'
+name: matrix-golden-baseline
+matrix_name: matrix-golden
+matrix_digest: cac5586f43f159d31a23f37fb87eb3b752600d6dcde707eb6580b3f642dc679d
+pinned_cells:
+- cell_id: mock-small-qa-smoke
+  run_id: 10000000-0000-4000-8000-000000000001
+  run_report_path: qa-baseline.json
+  run_report_digest: 3ac0cd25efba773c1217b1a5f0f4319bd0d0114002bf40ad1bed143676248bae
+  config_sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  model_digest: mock-small-v1
