@@ -41,29 +41,45 @@ Harness failures (a provider timing out, garbage output) are counted separately 
 
 ## What the reports look like
 
-Every run emits a self‑contained HTML dashboard (Altair / Vega‑Lite, no CDN). Open the committed artifacts in a browser, or see the rendered pages below.
+Every run emits a self‑contained HTML dashboard (Altair / Vega‑Lite, no CDN). The
+screenshots below were regenerated from **real-world cache-only packs** (SQuAD
+v1.1 extractive QA and AG News topic classification) plus a multi-member suite,
+all driven with the deterministic **mock** provider so the demo stays offline and
+reproducible. Mock answers are intentionally wrong on these corpora (pass rate
+near zero); the dashboards still show publishability, coverage, CIs, slices, and
+latency the same way a live Ollama or OpenAI‑compatible run would.
 
-### Single‑run dashboard
+Reproduce the fetch → pin → materialize → run → compare → suite path with
+[`scripts/demo_realworld.sh`](scripts/demo_realworld.sh) (writes under `.cache/`
+and `reports/demo/`; snapshots stay out of git).
 
-From the offline PoC in [`fixtures/poc/report.html`](fixtures/poc/report.html): publishability gates, KPIs, evaluation context, sampled cases, then quality / reliability / latency charts.
+### Real-world single-run dashboards
 
-<img src="docs/assets/report-dashboard.png" alt="Fully rendered single-run evaluation dashboard from the PoC fixture" width="900" />
+**SQuAD v1.1** (50-case CI pack, `squad_f1` / `exact_match`):
 
-### Suite dashboard
+<img src="docs/assets/realworld-squad-dashboard.png" alt="SQuAD v1.1 evaluation dashboard from a mock provider CI pack" width="900" />
 
-`evalctl suite build` folds many report artifacts into one leaderboard. This page is eight live Ollama runs across QA, news, healthcare, finance, math, extraction, retrieval, and summarization (coverage matrix, primary‑metric chart, and accessible tables):
+**AG News** (50-case CI pack, `classification`):
 
-<img src="docs/assets/suite-dashboard.png" alt="Fully rendered multi-industry suite dashboard with coverage matrix and leaderboard chart" width="900" />
+<img src="docs/assets/realworld-agnews-dashboard.png" alt="AG News classification evaluation dashboard from a mock provider CI pack" width="900" />
 
-Chart close‑ups from the same suite (primary metric and p95 latency):
+### Suite dashboard (real-world + synthetic members)
 
-![Suite leaderboard across eight synthetic industries](docs/assets/suite-leaderboard.png)
+`evalctl suite build` folds SQuAD, AG News, and synthetic members into one
+leaderboard (coverage matrix, primary metrics, latency):
 
-![Suite p95 latency by member](docs/assets/suite-latency.png)
+<img src="docs/assets/realworld-suite-dashboard.png" alt="Suite dashboard mixing SQuAD, AG News, and synthetic members" width="900" />
 
-### Single‑run chart detail
+Chart close‑ups from the same suite:
 
-From the same PoC run: metric scores with 95% confidence intervals, pass rate by slice, outcomes, and latency percentiles:
+![Suite primary-metric leaderboard](docs/assets/suite-leaderboard.png)
+
+![Suite latency by member](docs/assets/suite-latency.png)
+
+### Single‑run chart detail (SQuAD CI)
+
+Metric scores with 95% confidence intervals, pass rate by slice, outcomes, and
+latency percentiles:
 
 ![Metric scores with 95% CI](docs/assets/chart-metric-scores.png)
 
@@ -73,11 +89,28 @@ From the same PoC run: metric scores with 95% confidence intervals, pass rate by
 
 ![End-to-end latency percentiles](docs/assets/chart-latency-percentiles.png)
 
-### Industry example (finance)
+### Industry example (finance synthetic)
 
-A live finance pack scored with `numeric_assertion`, sliced by domain:
+Finance pack scored with `numeric_assertion` (mock provider):
 
-![Finance numeric_assertion by slice](docs/assets/run-finance-slices.png)
+![Finance numeric_assertion dashboard](docs/assets/run-finance-slices.png)
+
+### Surfaces exercised in the demo
+
+| Surface | What we ran |
+|---------|-------------|
+| `dataset materialize` / `dataset-validate` | SQuAD + AG News smoke (20) and ci (50) packs from pinned local snapshots |
+| `run` | Mock provider on those packs + synthetic industry fixtures |
+| `runs rescore` | Zero-inference rescore of the SQuAD smoke run |
+| `runs compare` | Paired baseline vs candidate SQuAD mock configs (`--allow-compatible`) |
+| `suite validate` / `suite build` | Multi-member suite HTML/JSON |
+| `power` / `calibrate` / `score` | Sample-size, threshold calibration, and offline JSONL scoring helpers |
+
+Judge / RAG need a live chat model (Ollama was down for this screenshot pass).
+Gates / matrix CLIs are not on the default `evalctl` entry in this checkout.
+
+PoC fixture for CI remains at [`fixtures/poc/report.html`](fixtures/poc/report.html)
+(also mirrored as `docs/assets/report-dashboard.png`).
 
 ## How it is used
 
@@ -137,8 +170,17 @@ uv run evalctl runs compare <baseline_run_id> <candidate_run_id> \
 
 ```bash
 uv run evalctl suite validate suite.yaml
-uv run evalctl suite build suite.yaml --output-dir suite-output
+uv run evalctl suite build --manifest suite.yaml --output suite-output
 # → suite-output/suite.json + self-contained suite.html leaderboard
+```
+
+### Real-world cache-only packs (SQuAD + AG News)
+
+```bash
+chmod +x scripts/demo_realworld.sh
+./scripts/demo_realworld.sh
+# snapshots + pins under .cache/datasets/ (gitignored)
+# packs under .cache/packs/; HTML/JSON under reports/demo/
 ```
 
 ### Judge and RAG evidence (informational until calibrated)
