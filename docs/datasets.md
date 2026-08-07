@@ -4,6 +4,32 @@ The dataset pack contract separates repository-authored harness fixtures from
 externally sourced benchmarks. A committed smoke fixture proves task-shape and
 metric wiring. It is not evidence of model quality on the named public benchmark.
 
+## Packaging and install
+
+This repo is a uv workspace with two packages:
+
+| Package | Path | Role |
+|---------|------|------|
+| `evalanche` (import `evalharness`) | `src/evalharness` | Pack load/validate, run, score, report; `dataset-validate` |
+| `evaldatasets` | `packages/evaldatasets` | Offline adapters, materialize, synthetic sources |
+
+**Dependency rule:** `evaldatasets` may depend on `evalanche` (pack contract).
+`evalanche` does **not** require `evaldatasets`. Materialize is an optional extra.
+
+| Install | Command | `dataset-validate` / `run` | `dataset materialize` |
+|---------|---------|----------------------------|------------------------|
+| Harness-only | `uv sync --package evalanche` (no `--extra datasets`) | Yes | No (exit 1 + install hint) |
+| Full / materialize | `uv sync --extra datasets` or `pip install 'evalanche[datasets]'` | Yes | Yes |
+
+Plain `uv sync` at the workspace root often installs workspace members; harness-only
+CI must use `--package evalanche` without the datasets extra.
+
+The old `tools/datasets` tree is gone. Synthetic manifest provenance may still
+use frozen `repo://tools/datasets/sources/...` URIs so content digests stay
+stable; those strings are identity labels, not a live filesystem path. Fetch
+and generate remain deferred non-goals; this package ships offline materialize
+only.
+
 ## Materialization contract
 
 `evalctl dataset materialize` reads a local snapshot and writes
@@ -130,8 +156,8 @@ default offline test environment.
 
 All cards below use revision `synthetic-v1`, split `dev`, tier `smoke`,
 `CC0-1.0`, and the privacy procedure above. Their canonical source is the
-corresponding file under `tools/datasets/sources/`; exact source and content
-digests are recorded in generated manifests.
+corresponding file under `packages/evaldatasets/src/evaldatasets/sources/`;
+exact source and content digests are recorded in generated manifests.
 
 ### synthetic_qa
 

@@ -7,10 +7,10 @@ from pathlib import Path
 
 import pytest
 import yaml
+from evaldatasets import MaterializationError, materialize_dataset
 
 from evalharness.datasets import DatasetTier, load_dataset, validate_dataset
 from tests.datasets._helpers import SMOKE_ROOT, SOURCE_ROOT
-from tools.datasets import MaterializationError, materialize_dataset
 
 
 @pytest.mark.parametrize(

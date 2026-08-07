@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 import yaml
+from evaldatasets import MaterializationError, materialize_dataset
+from evaldatasets.adapters import ADAPTERS
 
 from evalharness.datasets import DatasetTier, load_dataset, validate_dataset
 from tests.datasets._helpers import (
@@ -18,8 +20,6 @@ from tests.datasets._helpers import (
     rewrite_manifest,
     rewrite_source,
 )
-from tools.datasets import MaterializationError, materialize_dataset
-from tools.datasets.adapters import ADAPTERS
 
 CACHE_ONLY_ADAPTERS = (
     "financial_phrasebank",

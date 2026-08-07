@@ -92,7 +92,8 @@ flowchart LR
 | Configuration | `evalharness/config.py` | `Settings` (env‑backed): DB URL, provider URLs, timeouts, retry/coverage defaults, judge/NLI capacity |
 | Core types | `evalharness/core/{models,enums,protocols,ports}.py` | `Case`, `Generation`, `ScoreValue`, `AggregateValue`; `TaskType`/`FailureOutcome`/`ErrorClass`; the `Provider` and `Metric` protocols; the `RunStore` persistence port and its session‑bound factory |
 | Shared constants | `evalharness/core/constants.py` | `OVERALL_SLICE`, `PRIMARY_METRIC`, and the published schema versions (`REPORT_SCHEMA_VERSION`, `COMPARE_SCHEMA_VERSION`, `SUITE_SCHEMA_VERSION`) |
-| Datasets | `evalharness/datasets/{loader,validator}.py` | `manifest.yaml` + `cases.jsonl` → `Case`; fail‑fast validation, holdout guard, content hashing |
+| Datasets (harness) | `evalharness/datasets/{loader,validator}.py` | `manifest.yaml` + `cases.jsonl` → `Case`; fail‑fast validation, holdout guard, content hashing |
+| Dataset factory (optional) | `packages/evaldatasets` (`evaldatasets`) | Offline adapters, `materialize_dataset`, synthetic source JSONL; depends on `evalanche`; installed via `evalanche[datasets]` / `--extra datasets`; CLI imports only inside `dataset materialize` |
 | Providers | `evalharness/providers/{ollama,openai_compatible,mock,registry,factory,runtime,config,call_policy,retry,structured_output}.py` | Adapters, entry‑point discovery, `factory.build_managed_provider` for the CLI paths, managed runtime (token buckets, concurrency, circuit breaker), bounded non‑generation calls, `Retry-After` parsing, strict JSON output contracts |
 | Execution | `evalharness/execution/executor.py` | Plan, bounded concurrency, retries, cache, three‑layer timeouts, checkpoint/resume, outcome classification |
 | Scoring | `evalharness/scoring/{engine,registry,catalog,exact_match,normalizer,calibration,embeddings,ml,stats}.py` | Versioned metrics, zero‑inference rescore, per‑run aggregates |

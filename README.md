@@ -93,7 +93,7 @@ The core loop is: **validate a dataset → generate once → score / rescore →
 
 ```bash
 docker compose up -d postgres
-uv sync --all-extras
+uv sync --all-extras                 # workspace + extras (includes [datasets])
 cp .env.example .env
 
 uv run alembic upgrade head          # Alembic owns the schema (head: 0003)
@@ -105,6 +105,12 @@ uv run evalctl dataset-validate fixtures/sample_dataset
 uv run python scripts/run_poc.py
 uv run pytest tests/test_poc.py -q
 ```
+
+This repo is a uv workspace: root package **evalanche** (`evalharness`) plus
+optional **evaldatasets** under `packages/evaldatasets`. Harness-only:
+`uv sync --package evalanche`. Materialize needs
+`uv sync --extra datasets` (or `evalanche[datasets]`). See
+[docs/datasets.md](docs/datasets.md).
 
 ### Live run
 

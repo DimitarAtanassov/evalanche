@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 import yaml
+from evaldatasets import MaterializationError, materialize_dataset
 
 from evalharness.datasets import DatasetTier, load_dataset, validate_dataset
 from evalharness.hashing import sha256_hex
 from tests.datasets._helpers import SOURCE_ROOT
-from tools.datasets import MaterializationError, materialize_dataset
 
 
 def test_matching_digest_emits_valid_pack_with_provenance(tmp_path: Path) -> None:
@@ -185,8 +185,8 @@ def test_materialize_path_does_not_import_huggingface() -> None:
     banned = ("datasets", "huggingface_hub", "transformers")
     before = {name for name in banned if name in sys.modules}
 
-    importlib.import_module("tools.datasets.materialize")
-    importlib.import_module("tools.datasets.adapters")
+    importlib.import_module("evaldatasets.materialize")
+    importlib.import_module("evaldatasets.adapters")
 
     after = {name for name in banned if name in sys.modules}
     assert after == before

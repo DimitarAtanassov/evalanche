@@ -7,6 +7,7 @@ from pathlib import Path
 
 import typer
 import yaml
+from rich.markup import escape
 
 from evalharness.cli._common import _emit_json, console
 from evalharness.datasets import (
@@ -17,9 +18,13 @@ from evalharness.datasets import (
     validate_dataset,
 )
 from evalharness.observability import setup_logging
-from tools.datasets import MaterializationError, materialize_dataset
 
 dataset_app = typer.Typer(no_args_is_help=True)
+
+_FACTORY_INSTALL_HINT = (
+    "Dataset materialize requires the optional factory package. "
+    "Install with `uv sync --extra datasets` (or `pip install 'evalanche[datasets]'`)."
+)
 
 
 def dataset_validate(
@@ -64,6 +69,16 @@ def dataset_materialize(
     check_deterministic: bool = typer.Option(False, "--check-deterministic"),
 ) -> None:
     """Materialize a pinned local snapshot without network access."""
+    try:
+        from evaldatasets import MaterializationError, materialize_dataset
+    except (ModuleNotFoundError, ImportError) as exc:
+        missing = getattr(exc, "name", None)
+        if missing == "evaldatasets" or (
+            isinstance(missing, str) and missing.startswith("evaldatasets.")
+        ):
+            console.print(f"[red]ERROR[/red] {escape(_FACTORY_INSTALL_HINT)}")
+            raise typer.Exit(1) from exc
+        raise
     try:
         materialize_dataset(
             adapter_name=adapter,

@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 import yaml
+from evaldatasets import MaterializationError, materialize_dataset
+from evaldatasets.adapters import ADAPTERS, AdapterSpec, synthetic_spec
 
 from evalharness.datasets import DatasetTier, load_dataset, validate_dataset
 from evalharness.datasets.validator import INPUT_TEXT_LIMIT, REFERENCE_TEXT_LIMIT
-from tools.datasets import MaterializationError, materialize_dataset
-from tools.datasets.adapters import ADAPTERS, AdapterSpec, synthetic_spec
 
 
 def _write_pin(source: Path, *, revision: str, canonical_url: str) -> None:

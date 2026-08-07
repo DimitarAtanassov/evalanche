@@ -40,7 +40,7 @@ jobs:
           python-version: "3.12"
       - run: uv sync --all-extras
       - run: uv run ruff check .
-      - run: uv run mypy src/evalharness
+      - run: uv run mypy src/evalharness packages/evaldatasets/src/evaldatasets
       - run: uv run alembic upgrade head
       - run: uv run python scripts/run_poc.py
       - run: uv run pytest -q --cov=evalharness --cov-report=term-missing
@@ -48,6 +48,29 @@ jobs:
       - name: Ensure PoC artifacts are clean
         run: |
           git diff --exit-code -- fixtures/poc/report.json fixtures/poc/report.html fixtures/poc/meta.json
+
+  harness-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.9.16"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Sync harness without datasets extra
+        run: uv sync --package evalanche
+      - name: Assert evaldatasets is not importable
+        run: |
+          if uv run python -c "import evaldatasets"; then
+            echo "evaldatasets must not import in harness-only install" >&2
+            exit 1
+          fi
+      - name: Assert evalharness.cli imports
+        run: uv run python -c "import evalharness.cli"
+      - name: Validate sample dataset without factory
+        run: uv run evalctl dataset-validate fixtures/sample_dataset
 
   live-ollama:
     if: github.event_name == 'workflow_dispatch' && inputs.live_ollama

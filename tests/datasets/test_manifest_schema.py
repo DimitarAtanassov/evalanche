@@ -79,7 +79,10 @@ def test_source_revision_digest_must_be_sha256_hex(tmp_path: Path) -> None:
 
 def test_canonical_url_must_be_absolute(tmp_path: Path) -> None:
     dataset = copy_dataset(SMOKE_ROOT / "synthetic-qa-smoke", tmp_path / "relative-url")
-    rewrite_source(dataset, canonical_url="tools/datasets/sources/synthetic_qa.jsonl")
+    rewrite_source(
+        dataset,
+        canonical_url="packages/evaldatasets/src/evaldatasets/sources/synthetic_qa.jsonl",
+    )
 
     report = validate_dataset(load_dataset(dataset))
 

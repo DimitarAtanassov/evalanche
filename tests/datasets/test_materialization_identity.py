@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from evaldatasets.adapters import ADAPTERS
+from evaldatasets.materialize import SourcePin, materialization_version
+
 from evalharness.datasets import DatasetTier, load_dataset
 from tests.datasets._helpers import smoke_paths
-from tools.datasets.adapters import ADAPTERS
-from tools.datasets.materialize import SourcePin, materialization_version
 
 
 def test_all_committed_fixture_name_versions_are_unique() -> None:

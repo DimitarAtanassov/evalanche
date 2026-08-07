@@ -8,15 +8,15 @@ from pathlib import Path
 
 import pytest
 import yaml
+from evaldatasets import MaterializationError, materialize_dataset
 
 from evalharness.core.enums import FailureOutcome
 from evalharness.core.models import Case, Generation
 from evalharness.datasets import DatasetManifestError, DatasetTier, load_dataset, validate_dataset
 from evalharness.scoring.engine import ScoringEngine
-from tools.datasets import MaterializationError, materialize_dataset
 
 DATASET_ROOT = Path("fixtures/datasets")
-SOURCE_ROOT = Path("tools/datasets/sources")
+SOURCE_ROOT = Path("packages/evaldatasets/src/evaldatasets/sources")
 SMOKE_DATASETS = tuple(sorted(DATASET_ROOT.glob("*-smoke")))
 
 

@@ -1,0 +1,28 @@
+[project]
+name = "evaldatasets"
+version = "0.1.0"
+description = "Offline dataset adapters and materialization for evalanche"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "evalanche" }]
+dependencies = [
+    "evalanche",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# only-include + sources (not packages) so non-.py data under the tree is shipped.
+[tool.hatch.build.targets.wheel]
+only-include = ["src/evaldatasets"]
+sources = ["src"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/pyproject.toml",
+]
+
+[tool.uv.sources]
+evalanche = { workspace = true }

@@ -13,6 +13,12 @@ resolution-markers = [
     "python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
+[manifest]
+members = [
+    "evalanche",
+    "evaldatasets",
+]
+
 [[package]]
 name = "absl-py"
 version = "2.5.0"
@@ -545,6 +551,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+datasets = [
+    { name = "evaldatasets" },
+]
 dev = [
     { name = "hypothesis" },
     { name = "mypy" },
@@ -567,6 +576,7 @@ requires-dist = [
     { name = "altair", specifier = ">=5.5.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "bert-score", marker = "extra == 'metrics-ml'", specifier = ">=0.3.13" },
+    { name = "evaldatasets", marker = "extra == 'datasets'", editable = "packages/evaldatasets" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6.120.0" },
     { name = "jinja2", specifier = ">=3.1.4" },
@@ -601,7 +611,18 @@ requires-dist = [
     { name = "types-pyyaml", marker = "extra == 'dev'", specifier = ">=6.0.12" },
     { name = "vl-convert-python", specifier = ">=1.7.0" },
 ]
-provides-extras = ["dev", "metrics-ml"]
+provides-extras = ["dev", "datasets", "metrics-ml"]
+
+[[package]]
+name = "evaldatasets"
+version = "0.1.0"
+source = { editable = "packages/evaldatasets" }
+dependencies = [
+    { name = "evalanche" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "evalanche", editable = "." }]
 
 [[package]]
 name = "filelock"

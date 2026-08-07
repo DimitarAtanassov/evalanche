@@ -14,6 +14,7 @@ from typing import Any, cast
 
 import yaml
 
+from evaldatasets.adapters import ADAPTERS, AdapterSpec, CaseRecord, fits_field_bounds
 from evalharness.datasets import DatasetTier, load_dataset, validate_dataset
 from evalharness.datasets.validator import (
     ALLOWED_SMOKE_LICENSES,
@@ -22,7 +23,6 @@ from evalharness.datasets.validator import (
     SHA256_PATTERN,
     TIER_SIZE_BOUNDS,
 )
-from tools.datasets.adapters import ADAPTERS, AdapterSpec, CaseRecord, fits_field_bounds
 
 
 class MaterializationError(ValueError):
