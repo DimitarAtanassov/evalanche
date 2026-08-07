@@ -151,7 +151,8 @@ def _pubmedqa(path: Path) -> list[CaseRecord]:
     for record_id, value in root.items():
         if not isinstance(value, dict):
             continue
-        context_value = value.get("CONTEXT", [])
+        # Upstream PubMedQA dumps use CONTEXTS (list); older snapshots used CONTEXT.
+        context_value = value.get("CONTEXTS", value.get("CONTEXT", []))
         context = (
             "\n".join(map(str, context_value))
             if isinstance(context_value, list)
