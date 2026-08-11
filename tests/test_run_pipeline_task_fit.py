@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from evalharness.cli import _run_async
+from evalharness.app import build_container
 from evalharness.datasets import load_dataset
 from evalharness.reporting.report import PRIMARY_METRIC
 
@@ -24,8 +24,9 @@ async def test_run_publishes_report_scored_on_the_declared_task_metric(
     pass rate."""
     bundle = load_dataset(DATASET)
     assert bundle.manifest.task_metrics == ["classification"]
+    context = build_container()
 
-    await _run_async(
+    await context.evaluation.run(
         dataset_dir=DATASET,
         template=TEMPLATE,
         model="mock-model",

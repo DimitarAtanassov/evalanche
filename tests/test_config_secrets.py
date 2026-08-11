@@ -7,7 +7,7 @@ from collections.abc import Iterator
 import pytest
 from pydantic import SecretStr
 
-from evalharness.config import Settings, get_settings, redacted_database_url
+from evalharness.app.settings import Settings, get_settings, redacted_database_url
 from evalharness.providers.factory import build_managed_provider
 from evalharness.providers.openai_compatible import OpenAICompatibleProvider
 from evalharness.providers.runtime import ManagedProvider

@@ -7,15 +7,11 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from evalharness.domain.artifacts import StrictModel
+
 # JSON view models are intentionally open at the serialization boundary. Pydantic
 # validates all contract-bearing inputs before values reach this alias.
 type JsonValue = Any
-
-
-class StrictModel(BaseModel):
-    """Base model for versioned inputs that reject unknown fields."""
-
-    model_config = ConfigDict(extra="forbid")
 
 
 class MemberRole(StrEnum):

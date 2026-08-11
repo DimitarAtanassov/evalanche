@@ -8,20 +8,20 @@ from pathlib import Path
 
 import pytest
 
-from evalharness.config import Settings, get_settings
-from evalharness.core.enums import ErrorClass, FinishReason
-from evalharness.core.models import (
+from evalharness.app.settings import Settings, get_settings
+from evalharness.datasets import dataset_upsert_fields, load_dataset, validate_dataset
+from evalharness.domain.enums import ErrorClass, FinishReason
+from evalharness.domain.generation import (
     Capabilities,
     GenerationRequest,
     GenerationResponse,
     ModelVersion,
 )
-from evalharness.datasets import dataset_upsert_fields, load_dataset, validate_dataset
 from evalharness.execution.executor import Executor, render_prompt
 from evalharness.hashing import sha256_hex
 from evalharness.observability import PipelineStage, ProgressEvent
-from evalharness.store.db import session_scope
-from evalharness.store.repository import RunRepository
+from evalharness.db.session import session_scope
+from evalharness.repositories import RunStoreUow
 
 
 def _settings(**overrides: float | int | str) -> Settings:
@@ -124,7 +124,7 @@ async def test_shutdown_before_persist_does_not_count_as_completed(db_ready) -> 
     )
 
     async with session_scope() as session:
-        repo = RunRepository(session)
+        repo = RunStoreUow(session)
         dataset_id = await repo.upsert_dataset(**dataset_upsert_fields(bundle))
         prompt_template_id = await repo.upsert_prompt_template(
             name="t", version="1", body=template_body, sha256=template_sha
@@ -164,7 +164,7 @@ async def test_shutdown_before_persist_does_not_count_as_completed(db_ready) -> 
     assert final_progress.total == len(bundle.cases)
 
     async with session_scope() as session:
-        repo = RunRepository(session)
+        repo = RunStoreUow(session)
         gens = await repo.get_generations_for_run(run_id)
         run = await repo.get_run(run_id)
 

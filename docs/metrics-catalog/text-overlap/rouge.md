@@ -35,14 +35,14 @@ load), a **deterministic in‑house fallback** computes ROUGE‑1/2 via n‑gram
 ROUGE‑L via an LCS DP — preserving reportability. Either way the value is
 `scores["rougeL"].fmeasure`.
 
-```344:366:src/evalharness/scoring/catalog.py
+```python
             return float(scores["rougeL"].fmeasure), detail
         except ImportError:
             # Python 3.14 can block NLTK's regex import from unsafe paths.
             # The deterministic implementation below preserves reportability.
             pass
-        predicted = _tokens(gen.output)
-        expected = _tokens(reference)
+        predicted = tokens(gen.output)
+        expected = tokens(reference)
         ...
         lcs = _lcs_length(predicted, expected)
         fallback_detail["rougeL"] = _prf(lcs, len(predicted), len(expected))
@@ -87,7 +87,7 @@ ROUGE‑L via an LCS DP — preserving reportability. Either way the value is
 
 ## References & code
 
-- Code: [`RougeLMetric`](../../../src/evalharness/scoring/catalog.py), `_lcs_length`,
+- Code: [`RougeLMetric`](../../../src/evalharness/scoring/metrics/overlap/rouge_l.py), `_lcs_length`,
   `_prf`.
 - Guide: [§6.5](../../guide.md#65-summarization--generation-overlap).
 - Lineage: Lin (2004), "ROUGE: A Package for Automatic Evaluation of Summaries."

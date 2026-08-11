@@ -26,11 +26,11 @@ chrF is an F‑score over character n‑gram precision and recall (default up to
 β‑weighted toward recall; the ++ form adds word n‑grams via `word_order=2`. The metric uses
 SacreBLEU's `sentence_chrf(..., word_order=2)` and divides the 0–100 score by 100:
 
-```391:398:src/evalharness/scoring/catalog.py
+```16:23:src/evalharness/scoring/metrics/overlap/chrf.py
     def value(
         self, gen: Generation, case: Case, ctx: ScoringContext
     ) -> tuple[float | None, dict[str, Any]]:
-        reference = _reference(case)
+        reference = reference_text(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}
         score = sacrebleu.sentence_chrf(gen.output, [reference], word_order=2)
@@ -74,6 +74,6 @@ SacreBLEU's `sentence_chrf(..., word_order=2)` and divides the 0–100 score by 
 
 ## References & code
 
-- Code: [`ChrfMetric`](../../../src/evalharness/scoring/catalog.py); `sacrebleu.sentence_chrf`.
+- Code: [`ChrfMetric`](../../../src/evalharness/scoring/metrics/overlap/chrf.py); `sacrebleu.sentence_chrf`.
 - Guide: [§6.5](../../guide.md#65-summarization--generation-overlap).
 - Lineage: Popović (2015) chrF; (2017) chrF++.

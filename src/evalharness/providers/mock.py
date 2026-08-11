@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from evalharness.core.enums import ErrorClass, FinishReason
-from evalharness.core.models import (
+from evalharness.domain.enums import ErrorClass, FinishReason
+from evalharness.domain.generation import (
     Capabilities,
     GenerationRequest,
     GenerationResponse,

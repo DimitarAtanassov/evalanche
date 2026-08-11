@@ -35,7 +35,7 @@ scalars become leaves. With predicted leaf map \(P\), expected leaf map \(E\), a
 \text{precision} = \frac{m}{|P|}, \quad \text{recall} = \frac{m}{|E|}, \quad F_1 = \frac{2PR}{P+R}.
 \]
 
-```200:218:src/evalharness/scoring/catalog.py
+```python
         expected = _flatten(case.expected_json)
         matches = sum(predicted.get(key) == value for key, value in expected.items())
         precision = matches / len(predicted) if predicted else 0.0
@@ -94,6 +94,6 @@ def _flatten(value: Any, prefix: str = "") -> dict[str, Any]:
 
 ## References & code
 
-- Code: [`JsonFieldF1Metric`](../../../src/evalharness/scoring/catalog.py) and `_flatten`.
+- Code: [`JsonFieldF1Metric`](../../../src/evalharness/scoring/metrics/structured/json_field_f1.py) and `_flatten`.
 - Test: `test_json_flattened_field_f1` (asserts `0.5`).
 - Guide: [§6.1](../../guide.md#61-deterministic--lexical).

@@ -30,11 +30,11 @@ uses RapidFuzz's `normalized_similarity`:
 \text{sim}(o, r) = 1 - \frac{d(o, r)}{L} \in [0, 1].
 \]
 
-```121:128:src/evalharness/scoring/catalog.py
+```20:27:src/evalharness/scoring/metrics/lexical/levenshtein.py
     def value(
         self, gen: Generation, case: Case, ctx: ScoringContext
     ) -> tuple[float | None, dict[str, Any]]:
-        reference = _reference(case)
+        reference = reference_text(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}
         value = float(Levenshtein.normalized_similarity(gen.output, reference))
@@ -86,7 +86,7 @@ casing and punctuation count as edits here.
 
 ## References & code
 
-- Code: [`LevenshteinMetric`](../../../src/evalharness/scoring/catalog.py); RapidFuzz
+- Code: [`LevenshteinMetric`](../../../src/evalharness/scoring/metrics/lexical/levenshtein.py); RapidFuzz
   `Levenshtein.normalized_similarity`.
 - Guide: [§6.1](../../guide.md#61-deterministic--lexical).
 - Lineage: Levenshtein (1966), edit distance.

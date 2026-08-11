@@ -6,13 +6,9 @@ from pathlib import Path
 
 import typer
 
+from evalharness.app import build_container
 from evalharness.cli._common import _emit_json, console
-from evalharness.gates import (
-    ArtifactOverrides,
-    GatesValidationError,
-    evaluate_gates,
-    load_gates,
-)
+from evalharness.gates import ArtifactOverrides, GatesValidationError
 
 gates_app = typer.Typer(no_args_is_help=True)
 
@@ -23,7 +19,7 @@ def gates_validate(
 ) -> None:
     """Validate a gates manifest and every bound artifact."""
     try:
-        loaded = load_gates(manifest)
+        loaded = build_container().gates.load_gates(manifest)
     except GatesValidationError as exc:
         console.print(f"[red]{exc.code}[/red] {exc}")
         raise typer.Exit(1) from exc
@@ -53,8 +49,9 @@ def gates_check(
         calibration=str(calibration) if calibration is not None else None,
     )
     try:
-        loaded = load_gates(gates, overrides=overrides)
-        result = evaluate_gates(loaded)
+        gates_svc = build_container().gates
+        loaded = gates_svc.load_gates(gates, overrides=overrides)
+        result = gates_svc.evaluate_gates(loaded)
     except GatesValidationError as exc:
         console.print(f"[red]{exc.code}[/red] {exc}")
         raise typer.Exit(1) from exc

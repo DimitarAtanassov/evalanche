@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from evalharness.core.models import GenerationRequest, Message
+from evalharness.domain.generation import GenerationRequest, Message
 from evalharness.providers.ollama import OllamaProvider
 
 

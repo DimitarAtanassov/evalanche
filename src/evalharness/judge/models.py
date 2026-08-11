@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from evalharness.artifacts.calibration import AgreementMetric as AgreementMetric
 from evalharness.artifacts.calibration import CalibrationArtifact as CalibrationArtifact
 from evalharness.artifacts.calibration import SplitCalibration as SplitCalibration
-from evalharness.artifacts.calibration import StrictModel
+from evalharness.domain.artifacts import StrictModel
 
 
 class JudgeMode(StrEnum):

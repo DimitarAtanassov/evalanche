@@ -9,7 +9,7 @@ from typing import cast
 import yaml
 from pydantic import ValidationError
 
-from evalharness.core.constants import (
+from evalharness.domain.constants import (
     BASELINE_SCHEMA_VERSION,
     MATRIX_SCHEMA_VERSION,
     REPORT_SCHEMA_VERSION,

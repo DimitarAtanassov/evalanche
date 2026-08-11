@@ -9,13 +9,9 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
-
-class StrictModel(BaseModel):
-    """Reject unknown fields on versioned inputs."""
-
-    model_config = ConfigDict(extra="forbid")
+from evalharness.domain.artifacts import StrictModel
 
 
 class AgreementMetric(StrEnum):

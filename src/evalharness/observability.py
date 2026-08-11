@@ -27,7 +27,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcess
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import Tracer
 
-from evalharness.config import get_settings
+from evalharness.app.settings import get_settings
 
 _tracer: Tracer | None = None
 _span_exporter: InMemorySpanExporter | None = None

@@ -8,15 +8,15 @@ from collections.abc import AsyncIterator
 import pytest
 import pytest_asyncio
 
-from evalharness.config import get_settings
-from evalharness.core.enums import ErrorClass, FinishReason
-from evalharness.core.models import (
+from evalharness.app.settings import get_settings
+from evalharness.domain.enums import ErrorClass, FinishReason
+from evalharness.domain.generation import (
     Capabilities,
     GenerationRequest,
     GenerationResponse,
     ModelVersion,
 )
-from evalharness.store.db import get_engine, init_db
+from evalharness.db.session import get_engine, init_db
 
 
 @pytest.fixture(autouse=True)

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Protocol, TypedDict
 
-from evalharness.config import get_settings
-from evalharness.core.protocols import Provider
+from evalharness.app.settings import get_settings
+from evalharness.domain.provider import Provider
 from evalharness.providers.config import OllamaConfig, OpenAICompatibleConfig, ProviderConfig
 from evalharness.providers.registry import create_provider, load_provider
 from evalharness.providers.runtime import ManagedProvider

@@ -1,5 +1,5 @@
-from evalharness.core.enums import FailureOutcome, FinishReason
-from evalharness.core.models import Case, TaskType
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import FailureOutcome, FinishReason, TaskType
 from evalharness.execution.executor import classify_outcome, render_prompt
 
 

@@ -10,8 +10,8 @@ from typing import Any, TypedDict, cast
 
 import yaml
 
-from evalharness.core.enums import TaskType
-from evalharness.core.models import Case
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import TaskType
 from evalharness.hashing import sha256_hex
 
 

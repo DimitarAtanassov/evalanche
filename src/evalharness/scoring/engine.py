@@ -6,11 +6,13 @@ import uuid
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 
-from evalharness.core.constants import OVERALL_SLICE as OVERALL_SLICE
-from evalharness.core.enums import Requirement
-from evalharness.core.models import Case, Generation, ScoreValue, ScoringContext
-from evalharness.core.ports import RunStoreFactory
-from evalharness.core.protocols import Metric
+from evalharness.domain.constants import OVERALL_SLICE as OVERALL_SLICE
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import Requirement
+from evalharness.domain.generation import Generation
+from evalharness.domain.metric import Metric
+from evalharness.domain.ports import RunStoreFactory
+from evalharness.domain.scoring import ScoreValue, ScoringContext
 from evalharness.observability import (
     PipelineStage,
     ProgressCallback,
@@ -24,8 +26,8 @@ from evalharness.observability import (
 )
 from evalharness.scoring.normalizer import Normalizer, NormalizerConfig
 from evalharness.scoring.registry import MetricRegistry
-from evalharness.store.db import session_scope
-from evalharness.store.repository import RunRepository
+from evalharness.db.session import session_scope
+from evalharness.repositories import RunStoreUow
 
 logger = get_logger(__name__)
 
@@ -47,7 +49,7 @@ class ScoringEngine:
         self.batch_size = batch_size
         self.max_slice_cardinality = max_slice_cardinality
         self.normalizer = Normalizer(NormalizerConfig())
-        self.run_store: RunStoreFactory = run_store or RunRepository
+        self.run_store: RunStoreFactory = run_store or RunStoreUow
 
     def rollup_dimensions(self, cases: Iterable[Case]) -> set[str]:
         """Slice dimensions worth rolling up.
@@ -132,7 +134,7 @@ class ScoringEngine:
                                 for dimension, value in sorted(case.slices.items())
                                 if dimension in dimensions
                             ]
-                            generation = await repo.generation_to_domain(row, case.external_id)
+                            generation = row.as_generation()
                             scores = self.score_one(generation, case, metric_names)
                             logger.debug(
                                 "generation_scored",

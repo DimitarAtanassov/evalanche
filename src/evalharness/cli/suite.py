@@ -6,8 +6,9 @@ from pathlib import Path
 
 import typer
 
+from evalharness.app import build_container
 from evalharness.cli._common import _emit_json, console
-from evalharness.suite import SuiteValidationError, load_suite, write_suite_artifacts
+from evalharness.suite import SuiteValidationError
 
 suite_app = typer.Typer(no_args_is_help=True)
 
@@ -18,7 +19,7 @@ def suite_validate(
 ) -> None:
     """Validate a suite manifest and every declared artifact."""
     try:
-        validated = load_suite(manifest)
+        validated = build_container().suite.load_suite(manifest)
     except SuiteValidationError as exc:
         console.print(f"[red]{exc.code}[/red] {exc}")
         raise typer.Exit(1) from exc
@@ -40,7 +41,7 @@ def suite_build(
 ) -> None:
     """Build deterministic suite.json and offline suite.html."""
     try:
-        report = write_suite_artifacts(manifest, output)
+        report = build_container().suite.write_suite_artifacts(manifest, output)
     except SuiteValidationError as exc:
         console.print(f"[red]{exc.code}[/red] {exc}")
         raise typer.Exit(1) from exc

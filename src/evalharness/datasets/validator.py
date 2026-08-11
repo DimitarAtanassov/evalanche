@@ -7,8 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from evalharness.core.enums import TaskType
 from evalharness.datasets.loader import TASK_REQUIRED_FIELDS, DatasetBundle, DatasetTier
+from evalharness.domain.enums import TaskType
 
 ALLOWED_SMOKE_LICENSES = frozenset(
     {
@@ -34,7 +34,9 @@ TASK_METRICS: dict[TaskType, frozenset[str]] = {
     TaskType.CLASSIFICATION: frozenset({"classification"}),
     TaskType.EXTRACTION: frozenset({"json_validity", "json_field_f1"}),
     TaskType.SUMMARIZATION: frozenset({"rouge_l", "chrf_pp", "meteor"}),
-    TaskType.RETRIEVAL: frozenset({"retrieval_ndcg_10"}),
+    TaskType.RETRIEVAL: frozenset(
+        {"retrieval_ndcg_10", "retrieval_precision_at_k", "retrieval_mrr", "retrieval_map"}
+    ),
 }
 INPUT_TEXT_LIMIT = 2_000
 REFERENCE_TEXT_LIMIT = 500

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from importlib.metadata import entry_points
 
-from evalharness.core.protocols import Provider
+from evalharness.domain.provider import Provider
 from evalharness.providers.config import OllamaConfig, OpenAICompatibleConfig, ProviderConfig
 from evalharness.providers.ollama import OllamaProvider
 from evalharness.providers.openai_compatible import OpenAICompatibleProvider

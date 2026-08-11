@@ -8,7 +8,8 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from evalharness.artifacts.calibration import CalibrationArtifact
-from evalharness.suite.models import CompareArtifact, RunArtifact, StrictModel
+from evalharness.domain.artifacts import StrictModel
+from evalharness.suite.models import CompareArtifact, RunArtifact
 
 type JsonValue = Any
 

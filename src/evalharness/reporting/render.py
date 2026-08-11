@@ -18,7 +18,7 @@ from evalharness.charts import (
     render_chart,
     vega_runtime,
 )
-from evalharness.core.constants import OVERALL_SLICE
+from evalharness.domain.constants import OVERALL_SLICE
 from evalharness.reporting.assemble import HARNESS_OUTCOMES, HEADLINE_MEAN, RunReport
 
 METRIC_CHART_DIV_ID = "chart-metric-scores"

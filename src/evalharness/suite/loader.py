@@ -11,7 +11,7 @@ import yaml
 from pydantic import ValidationError
 
 from evalharness.artifacts.calibration import CalibrationArtifact
-from evalharness.core.constants import (
+from evalharness.domain.constants import (
     COMPARE_SCHEMA_VERSION,
     OVERALL_SLICE,
     REPORT_SCHEMA_VERSION,

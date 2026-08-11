@@ -33,7 +33,7 @@ Extract numbers with the regex `[-+]?\d*\.?\d+` from output and reference, givin
 \text{pass} = \big(|P| = |E|\big) \wedge \bigwedge_i \text{isclose}(P_i, E_i;\ \text{rel\_tol}=10^{-6},\ \text{abs\_tol}=10^{-6}).
 \]
 
-```158:164:src/evalharness/scoring/catalog.py
+```python
         predicted_numbers = [float(value) for value in re.findall(r"[-+]?\d*\.?\d+", gen.output)]
         expected_numbers = [float(value) for value in re.findall(r"[-+]?\d*\.?\d+", reference)]
         passed = len(predicted_numbers) == len(expected_numbers) and all(
@@ -89,6 +89,6 @@ Extract numbers with the regex `[-+]?\d*\.?\d+` from output and reference, givin
 
 ## References & code
 
-- Code: [`NumericAssertionMetric`](../../../src/evalharness/scoring/catalog.py);
+- Code: [`NumericAssertionMetric`](../../../src/evalharness/scoring/metrics/lexical/numeric_assertion.py);
   `math.isclose`.
 - Guide: [§6.1](../../guide.md#61-deterministic--lexical).

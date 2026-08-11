@@ -5,28 +5,31 @@ RAG context selection — accuracy is meaningless; what matters is whether relev
 appear, and appear *near the top*. This family scores a ranked list against graded
 relevance judgments (`qrels`).
 
-It is **one registered metric**, `retrieval_ndcg_10`, whose primary value is NDCG@10 but
-whose `detail` payload carries the full ranking battery across cutoffs. The per‑metric docs
-below dissect each part of that payload.
+`retrieval_ndcg_10` is the primary metric (NDCG@10), and three siblings publish the other
+ranking signals as metrics in their own right, so each is aggregated, sliced, and gated
+independently: `retrieval_precision_at_k`, `retrieval_mrr`, and `retrieval_map`. The NDCG
+`detail` payload still carries the full battery across cutoffs, retained for one release
+and contracted after that; read the sibling metric, not the detail, for anything you gate
+on. A dataset that declares only `retrieval_ndcg_10` keeps working unchanged.
 
-- **Code:** [`RetrievalMetric`](../../../src/evalharness/scoring/catalog.py)
+- **Code:** [`scoring/metrics/retrieval/`](../../../src/evalharness/scoring/metrics/retrieval/)
 - **Requires:** `QRELS` — a `case.qrels` map of `{doc_id: graded_relevance}`.
 - **Task types:** `retrieval`, `rag`.
 
-## The sub‑metrics (all in one `score()` call)
+## The signals and where they come from
 
-| Doc | Sub‑metrics | One line |
-|-----|-------------|----------|
-| [NDCG](ndcg.md) | NDCG@10, `recall_ceiling` | Primary value: graded, position‑discounted quality with **exponential gain** |
-| [Precision / recall / hit @k](precision-recall-hit-at-k.md) | P@k, R@k, Hit@k for k∈{1,3,5,10,20} | Set‑based accuracy at each cutoff |
-| [MRR & MAP](mrr-map.md) | MRR, MAP | Rank of the first hit; mean average precision |
+| Doc | Signals | Metric | One line |
+|-----|---------|--------|----------|
+| [NDCG](ndcg.md) | NDCG@10, `recall_ceiling` | `retrieval_ndcg_10` | Primary value: graded, position‑discounted quality with **exponential gain** |
+| [Precision / recall / hit @k](precision-recall-hit-at-k.md) | P@k, R@k, Hit@k for k∈{1,3,5,10,20} | `retrieval_precision_at_k` (P@k); R@k and Hit@k in the NDCG detail | Set‑based accuracy at each cutoff |
+| [MRR & MAP](mrr-map.md) | MRR, MAP | `retrieval_mrr`, `retrieval_map` | Rank of the first hit; mean average precision |
 
 ## How the ranking is parsed (shared)
 
 The model's output becomes a ranked list of doc ids, then **relevant** docs are those with
 positive graded relevance:
 
-```290:294:src/evalharness/scoring/catalog.py
+```python
         try:
             ranking = json.loads(gen.output or "[]")
         except json.JSONDecodeError:
@@ -44,7 +47,9 @@ Key behaviors every sub‑metric inherits:
   score‑based re‑sort; the *ranking is the model's order*.
 - **Zero‑relevance exclusion:** if `case.qrels` is empty/falsy, the metric returns
   `value=None` with `detail={"excluded": "zero_relevance"}` — a query with no relevant docs
-  is **excluded, not scored as 0** (it would otherwise unfairly punish or reward).
+  is **excluded, not scored as 0** (it would otherwise unfairly punish or reward). The
+  sibling metrics also exclude a case whose judgments are all graded `0`, which has no
+  relevant document to rank.
 
 ## Pitfalls that apply to the whole family
 

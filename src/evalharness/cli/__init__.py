@@ -9,15 +9,14 @@ from evalharness.cli.dataset import dataset_app, dataset_validate
 from evalharness.cli.gates import gates_app
 from evalharness.cli.judge import judge_app
 from evalharness.cli.matrix import baseline_app, matrix_app
+from evalharness.cli.metrics import metrics_app
 from evalharness.cli.power import power
 from evalharness.cli.rag import rag_app
 from evalharness.cli.run import run_eval
 from evalharness.cli.runs import runs_app
 from evalharness.cli.score import score_file
 from evalharness.cli.suite import suite_app
-from evalharness.compare import compare_runs
 from evalharness.observability import setup_logging
-from evalharness.pipeline import run_evaluation
 
 app = typer.Typer(no_args_is_help=True, help="evalanche — reproducible LLM evaluation harness")
 
@@ -28,6 +27,7 @@ app.command("dataset-validate")(dataset_validate)
 app.command("run")(run_eval)
 
 app.add_typer(runs_app, name="runs")
+app.add_typer(metrics_app, name="metrics")
 app.add_typer(dataset_app, name="dataset")
 app.add_typer(suite_app, name="suite")
 app.add_typer(judge_app, name="judge")
@@ -36,12 +36,7 @@ app.add_typer(matrix_app, name="matrix")
 app.add_typer(baseline_app, name="baseline")
 app.add_typer(gates_app, name="gates")
 
-# Kept importable: scripts and tests drive the services directly, while the commands
-# above wrap them with console output and exit codes.
-_compare_runs_async = compare_runs
-_run_async = run_evaluation
-
-__all__ = ["_compare_runs_async", "_run_async", "app", "configure_cli_logging"]
+__all__ = ["app", "configure_cli_logging"]
 
 
 @app.callback()

@@ -16,8 +16,8 @@ import pytest
 import yaml
 from typer.testing import CliRunner
 
-import evalharness.compare.service as compare_service
-import evalharness.wiring as wiring
+import evalharness.repositories as repositories
+import evalharness.services.compare as compare_service
 from evalharness.charts import script_json
 from evalharness.cli import app
 from evalharness.judge import attach_calibration, run_judgment, validate_calibration
@@ -501,6 +501,11 @@ def test_runs_compare_artifact_validates_and_round_trips_through_suite_build(
         repeats=1,
     )
 
+    outcomes: dict[uuid.UUID, dict[tuple[str, int], bool]] = {
+        baseline_run_id: {("case-1", 0): True, ("case-2", 0): False, ("case-3", 0): False},
+        candidate_run_id: {("case-1", 0): True, ("case-2", 0): True, ("case-3", 0): False},
+    }
+
     class FakeRepository:
         def __init__(self, _session: object) -> None:
             pass
@@ -508,32 +513,18 @@ def test_runs_compare_artifact_validates_and_round_trips_through_suite_build(
         async def get_run(self, run_id: uuid.UUID) -> SimpleNamespace | None:
             return run if run_id in {baseline_run_id, candidate_run_id} else None
 
-    class FakeResult:
-        def __init__(self, rows: list[tuple[str, int, bool]]) -> None:
-            self._rows = rows
-
-        def all(self) -> list[tuple[str, int, bool]]:
-            return self._rows
-
-    class FakeSession:
-        def __init__(self) -> None:
-            self._calls = 0
-
-        async def execute(self, _statement: object) -> FakeResult:
-            rows = (
-                [("case-1", 0, True), ("case-2", 0, False), ("case-3", 0, False)]
-                if self._calls == 0
-                else [("case-1", 0, True), ("case-2", 0, True), ("case-3", 0, False)]
-            )
-            self._calls += 1
-            return FakeResult(rows)
+        async def get_paired_outcomes(
+            self, run_id: uuid.UUID, _metric: str
+        ) -> dict[tuple[str, int], bool]:
+            return outcomes[run_id]
 
     @asynccontextmanager
-    async def fake_session_scope() -> AsyncIterator[FakeSession]:
-        yield FakeSession()
+    async def fake_session_scope() -> AsyncIterator[object]:
+        yield object()
 
-    # The CLI takes its store from the composition root, so that is where it is swapped.
-    monkeypatch.setattr(wiring, "RunRepository", FakeRepository)
+    # The composition root resolves the store from this package per call, so that is
+    # where the CLI path picks up a substitute.
+    monkeypatch.setattr(repositories, "RunStoreUow", FakeRepository)
     monkeypatch.setattr(compare_service, "session_scope", fake_session_scope)
     # Suite artifacts must live under the manifest directory; see the containment test.
     compare_path = mutable_suite.parent / "produced-compare.json"
@@ -589,7 +580,11 @@ def test_runs_compare_reports_no_effect_when_both_arms_are_identical(
         config_sha256="same-config",
         repeats=1,
     )
-    rows = [("case-1", 0, True), ("case-2", 0, False), ("case-3", 0, True)]
+    outcomes: dict[tuple[str, int], bool] = {
+        ("case-1", 0): True,
+        ("case-2", 0): False,
+        ("case-3", 0): True,
+    }
 
     class FakeRepository:
         def __init__(self, _session: object) -> None:
@@ -598,19 +593,16 @@ def test_runs_compare_reports_no_effect_when_both_arms_are_identical(
         async def get_run(self, run_id: uuid.UUID) -> SimpleNamespace | None:
             return run if run_id in {baseline_run_id, candidate_run_id} else None
 
-    class FakeResult:
-        def all(self) -> list[tuple[str, int, bool]]:
-            return list(rows)
-
-    class FakeSession:
-        async def execute(self, _statement: object) -> FakeResult:
-            return FakeResult()
+        async def get_paired_outcomes(
+            self, _run_id: uuid.UUID, _metric: str
+        ) -> dict[tuple[str, int], bool]:
+            return outcomes
 
     @asynccontextmanager
-    async def fake_session_scope() -> AsyncIterator[FakeSession]:
-        yield FakeSession()
+    async def fake_session_scope() -> AsyncIterator[object]:
+        yield object()
 
-    monkeypatch.setattr(wiring, "RunRepository", FakeRepository)
+    monkeypatch.setattr(repositories, "RunStoreUow", FakeRepository)
     monkeypatch.setattr(compare_service, "session_scope", fake_session_scope)
     output = tmp_path / "identical-compare.json"
 
@@ -759,7 +751,7 @@ def test_suite_package_has_no_runtime_or_persistence_imports() -> None:
         "evalharness.providers",
         "evalharness.reporting",
         "evalharness.scoring",
-        "evalharness.store",
+        "evalharness.db",
     )
     forbidden_names = {"sqlalchemy", "asyncpg"}
     imports: set[str] = set()
@@ -768,7 +760,7 @@ def test_suite_package_has_no_runtime_or_persistence_imports() -> None:
             continue
         text = path.read_text(encoding="utf-8")
         assert "DATABASE_URL" not in text
-        assert "evalharness.store" not in text
+        assert "evalharness.db" not in text
         assert "evalharness.providers" not in text
         if path.suffix != ".py":
             continue

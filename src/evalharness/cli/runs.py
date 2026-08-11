@@ -9,11 +9,10 @@ from pathlib import Path
 
 import typer
 
+from evalharness.app import build_container
 from evalharness.cli._common import _emit_json, console
 from evalharness.cli_progress import PipelineProgress
-from evalharness.compare import compare_runs
 from evalharness.observability import setup_logging
-from evalharness.wiring import build_app_context
 
 runs_app = typer.Typer(no_args_is_help=True)
 
@@ -26,10 +25,10 @@ def runs_rescore(
     """Idempotently rescore stored generations with zero inference."""
     setup_logging()
     try:
-        context = build_app_context()
+        context = build_container()
         with PipelineProgress(console) as pipeline_progress:
             count = asyncio.run(
-                context.scoring_engine().rescore_run(
+                context.scoring.rescore_run(
                     uuid.UUID(run_id),
                     [name.strip() for name in metrics.split(",") if name.strip()],
                     progress=pipeline_progress,
@@ -54,14 +53,13 @@ def runs_compare(
 ) -> None:
     """Compare aligned case/repeat outcomes with paired inference."""
     try:
-        context = build_app_context()
+        context = build_container()
         artifact = asyncio.run(
-            compare_runs(
+            context.compare.compare_runs(
                 uuid.UUID(baseline_run_id),
                 uuid.UUID(candidate_run_id),
                 metric,
                 allow_compatible,
-                run_store=context.run_store,
             )
         )
         payload = json.dumps(artifact, indent=2, allow_nan=False)

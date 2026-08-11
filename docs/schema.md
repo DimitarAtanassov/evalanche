@@ -94,7 +94,7 @@ Bootstrap:
 ```bash
 uv run alembic upgrade head
 # equivalent (also called by evalctl run):
-# uv run python -c "import asyncio; from evalharness.store.db import init_db; asyncio.run(init_db())"
+# uv run python -c "import asyncio; from evalharness.db.session import init_db; asyncio.run(init_db())"
 ```
 
 ## Indexing and idempotency (why these exist)

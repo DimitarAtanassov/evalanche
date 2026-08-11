@@ -37,11 +37,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "hypothesis>=6.120.0",
+    "import-linter>=2.1",
     "mypy>=1.13.0",
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
-    "hypothesis>=6.120.0",
     "respx>=0.22.0",
     "ruff>=0.8.0",
     "types-pyyaml>=6.0.12",
@@ -49,6 +50,13 @@ dev = [
 datasets = [
     "evaldatasets",
 ]
+# No metrics-classification / metrics-overlap extra: scikit-learn is also used by
+# calibration and judge agreement, and moving sacrebleu / rouge-score / nltk out of the
+# core dependencies would silently change published ROUGE numbers on a default install
+# (rouge_l falls back to an in-tree implementation when rouge_score is absent). Runtime
+# gating is METRIC_FAMILIES / METRICS_ENABLED; the registry already reports an
+# uninstalled metric instead of failing discovery, so moving a family behind an extra
+# later is a change to this file only.
 metrics-ml = [
     "bert-score>=0.3.13",
     "torch>=2.5.0",
@@ -63,8 +71,25 @@ ollama = "evalharness.providers.ollama:OllamaProvider"
 openai_compatible = "evalharness.providers.openai_compatible:OpenAICompatibleProvider"
 mock = "evalharness.providers.mock:MockProvider"
 
+# Entry-point name must equal ``Metric.name``: the registry filters by family and by
+# METRICS_ENABLED before loading, so it only has the entry-point name to go on.
 [project.entry-points."evalharness.metrics"]
-bertscore = "evalharness.scoring.ml:BERTScoreMetric"
+squad_f1 = "evalharness.scoring.metrics.lexical.squad_f1:SquadMetric"
+normalized_levenshtein = "evalharness.scoring.metrics.lexical.levenshtein:LevenshteinMetric"
+assertions = "evalharness.scoring.metrics.lexical.assertions:AssertionMetric"
+numeric_assertion = "evalharness.scoring.metrics.lexical.numeric_assertion:NumericAssertionMetric"
+json_validity = "evalharness.scoring.metrics.structured.json_validity:JsonValidityMetric"
+json_field_f1 = "evalharness.scoring.metrics.structured.json_field_f1:JsonFieldF1Metric"
+classification = "evalharness.scoring.metrics.classification.labels:ClassificationMetric"
+retrieval_ndcg_10 = "evalharness.scoring.metrics.retrieval.ndcg:RetrievalMetric"
+retrieval_precision_at_k = "evalharness.scoring.metrics.retrieval.precision_at_k:RetrievalPrecisionAtKMetric"
+retrieval_mrr = "evalharness.scoring.metrics.retrieval.mrr:RetrievalMrrMetric"
+retrieval_map = "evalharness.scoring.metrics.retrieval.average_precision:RetrievalMapMetric"
+rouge_l = "evalharness.scoring.metrics.overlap.rouge_l:RougeLMetric"
+chrf_pp = "evalharness.scoring.metrics.overlap.chrf:ChrfMetric"
+sacrebleu = "evalharness.scoring.metrics.overlap.bleu:BleuMetric"
+meteor = "evalharness.scoring.metrics.overlap.meteor:MeteorMetric"
+bertscore_f1 = "evalharness.scoring.ml:BERTScoreMetric"
 
 [build-system]
 requires = ["hatchling"]
@@ -109,3 +134,52 @@ ignore_missing_imports = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+
+# Layering contracts, checked by `lint-imports`. These encode the seams described in
+# docs/architecture.md so a violation fails CI instead of being found in review.
+[tool.importlinter]
+root_package = "evalharness"
+
+[[tool.importlinter.contracts]]
+name = "Domain depends on nothing in the harness"
+type = "forbidden"
+source_modules = ["evalharness.domain"]
+forbidden_modules = [
+    "evalharness.app",
+    "evalharness.cli",
+    "evalharness.providers",
+    "evalharness.repositories",
+    "evalharness.services",
+    "evalharness.db",
+]
+
+[[tool.importlinter.contracts]]
+name = "Services never touch the ORM, the CLI, or the composition root"
+type = "forbidden"
+# ``app.settings`` is deliberately absent: a service declares ``Settings`` as an injected
+# parameter. What it must not do is reach the container and wire itself, or read a row
+# type the repositories own.
+#
+# Direct imports only. A service legitimately calls the executor and the scoring engine,
+# and those reach the ORM through the store, so a transitive check would forbid the
+# layering this contract exists to protect.
+allow_indirect_imports = true
+source_modules = ["evalharness.services"]
+forbidden_modules = [
+    "evalharness.app.bootstrap",
+    "evalharness.app.container",
+    "evalharness.cli",
+    "evalharness.db.models",
+]
+
+[[tool.importlinter.contracts]]
+name = "Metric families do not cross-import"
+type = "independence"
+# A family shares code through ``scoring.base`` only, so adding one stays a local change.
+modules = [
+    "evalharness.scoring.metrics.classification",
+    "evalharness.scoring.metrics.lexical",
+    "evalharness.scoring.metrics.overlap",
+    "evalharness.scoring.metrics.retrieval",
+    "evalharness.scoring.metrics.structured",
+]

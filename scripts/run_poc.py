@@ -16,19 +16,19 @@ from typing import Any
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evalharness.config import get_settings
-from evalharness.core.models import ModelVersion
+from evalharness.app.settings import get_settings
 from evalharness.datasets import dataset_upsert_fields, load_dataset, validate_dataset
 from evalharness.datasets.loader import DatasetBundle
+from evalharness.domain.generation import ModelVersion
 from evalharness.execution.executor import Executor, render_prompt, response_cache_key
 from evalharness.hashing import sha256_hex
 from evalharness.observability import setup_logging, setup_otel
 from evalharness.providers.mock import MOCK_DIGEST, MockProvider
 from evalharness.reporting.report import report_to_html, report_to_json, write_report
 from evalharness.scoring.engine import ScoringEngine
-from evalharness.store.db import init_db, session_scope
-from evalharness.store.models import GenerationRow, MetricAggregateRow, RunRow, ScoreRow
-from evalharness.store.repository import RunRepository
+from evalharness.db.session import init_db, session_scope
+from evalharness.db.models import GenerationRow, MetricAggregateRow, RunRow, ScoreRow
+from evalharness.repositories import RunStoreUow
 
 ROOT = Path(__file__).resolve().parents[1]
 POC_DIR = ROOT / "fixtures" / "poc"
@@ -50,7 +50,7 @@ async def _reset_poc_state(
     Without the cache purge a second local run would report ``cache_hits == len(cases)``
     while a fresh CI database reports zero, making the committed artifacts irreproducible.
     """
-    repo = RunRepository(session)
+    repo = RunStoreUow(session)
     await repo.delete_cache(
         [
             response_cache_key(
@@ -109,7 +109,7 @@ async def run_poc(*, output_dir: Path) -> Path:
             template_body=template_body,
             decode_params=decode_params,
         )
-        repo = RunRepository(session)
+        repo = RunStoreUow(session)
         dataset_id = await repo.upsert_dataset(**dataset_upsert_fields(bundle))
         prompt_template_id = await repo.upsert_prompt_template(
             name="poc-qa-template",

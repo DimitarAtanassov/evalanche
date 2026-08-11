@@ -6,7 +6,7 @@ import json
 import uuid
 from pathlib import Path
 
-from evalharness.core.ports import RunStoreFactory
+from evalharness.domain.ports import RunStoreFactory
 from evalharness.observability import (
     PipelineStage,
     ProgressCallback,
@@ -26,8 +26,8 @@ from evalharness.reporting.assemble import (
     assemble_run_report,
 )
 from evalharness.reporting.render import report_to_html, report_to_json, report_to_junit
-from evalharness.store.db import session_scope
-from evalharness.store.repository import RunRepository
+from evalharness.db.session import session_scope
+from evalharness.repositories import RunStoreUow
 
 logger = get_logger(__name__)
 
@@ -46,11 +46,10 @@ async def build_report(
     pass its head, or the headline reports zero observations against a metric the run
     never scored.
 
-    ``run_store`` defaults to ``RunRepository``, matching executor and scoring. Definition
-    rows are loaded through the port (still ORM rows; documented honesty).
+    ``run_store`` defaults to ``RunStoreUow``, matching executor and scoring.
     """
     timer = StageTimer()
-    store = run_store or RunRepository
+    store = run_store or RunStoreUow
     logger.info(
         "report_build_started",
         run_id=str(run_id),

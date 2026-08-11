@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from evalharness.app.settings import get_settings
 from evalharness.cli import app
-from evalharness.config import get_settings
 from evalharness.judge import JudgeError, attach_calibration, run_judgment, validate_calibration
 from evalharness.judge.agreement import compute_agreement
 from evalharness.judge.models import AgreementMetric, JudgeMode
@@ -1042,7 +1042,7 @@ def test_cli_judge_validate_and_attach_calibration(tmp_path: Path) -> None:
 
 def test_judge_package_does_not_import_store_or_hf() -> None:
     judge_root = ROOT / "src" / "evalharness" / "judge"
-    forbidden = ("evalharness.store", "huggingface_hub", "datasets", "transformers")
+    forbidden = ("evalharness.db", "huggingface_hub", "datasets", "transformers")
     for path in judge_root.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
@@ -1060,6 +1060,6 @@ def test_suite_path_still_avoids_judge_store_coupling() -> None:
     suite_root = ROOT / "src" / "evalharness" / "suite"
     for path in suite_root.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
-        assert "evalharness.store" not in text
+        assert "evalharness.db" not in text
         assert "evalharness.providers" not in text
         assert "huggingface" not in text

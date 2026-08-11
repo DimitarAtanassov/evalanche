@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from evalharness.core.models import GenerationRequest, GenerationResponse, Message
-from evalharness.core.protocols import Provider
+from evalharness.domain.generation import GenerationRequest, GenerationResponse, Message
+from evalharness.domain.provider import Provider
 from evalharness.judge.errors import JudgeError
 from evalharness.judge.io import load_jsonl_models, write_json
 from evalharness.judge.models import (

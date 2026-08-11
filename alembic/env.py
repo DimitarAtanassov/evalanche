@@ -9,8 +9,8 @@ from sqlalchemy import Connection, pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
-from evalharness.config import get_settings
-from evalharness.store.models import Base
+from evalharness.app.settings import get_settings
+from evalharness.db.models import Base
 
 config = context.config
 if config.config_file_name is not None:

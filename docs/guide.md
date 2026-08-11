@@ -147,7 +147,7 @@ flowchart LR
 | Executor | `evalharness.execution` | Plan, concurrency, retries, cache, checkpoint, resume, outcome taxonomy |
 | Scoring engine + registry | `evalharness.scoring` | Versioned metrics, zero‑inference rescore, aggregates |
 | Statistics | `evalharness.statistics` | Wilson, BCa, McNemar, BH, pass@k, power, comparisons |
-| Store | `evalharness.store` | Async SQLAlchemy; Alembic‑owned schema |
+| Store | `evalharness.db` | Async SQLAlchemy; Alembic‑owned schema |
 | Reporting | `evalharness.reporting` | Multi‑view JSON/HTML + JUnit; publishability gate |
 
 Seams you must not violate: the **`Provider` protocol**, the **`Metric` protocol**
@@ -262,7 +262,7 @@ uv sync --all-extras
 # 3. Schema — Alembic is the sole schema owner
 uv run alembic upgrade head
 # equivalent (also called by evalctl run):
-# uv run python -c "import asyncio; from evalharness.store.db import init_db; asyncio.run(init_db())"
+# uv run python -c "import asyncio; from evalharness.db.session import init_db; asyncio.run(init_db())"
 ```
 
 `.env.example` keys: `DATABASE_URL`, `OLLAMA_BASE_URL`, `HARNESS_VERSION`, `GIT_SHA`,
@@ -300,8 +300,12 @@ pulling models.
 ```bash
 uv run ruff check .
 uv run mypy src/evalharness
+uv run lint-imports
 uv run pytest -q
 ```
+
+`lint-imports` checks the layering contracts declared under `[tool.importlinter]` in
+`pyproject.toml`.
 
 Optional 100k planner/scorer memory gate: `uv run python scripts/benchmark_100k.py`
 (see [`docs/benchmarks.md`](benchmarks.md)).
@@ -635,7 +639,7 @@ Judge, calibration, and RAG evidence are file artifacts, not rows.
 
 ### 5.3 Table‑by‑table reference
 
-All types/constraints below match `src/evalharness/store/models.py` and the live
+All types/constraints below match `src/evalharness/db/models.py` and the live
 `\d+` output after migration `0004`.
 
 #### `datasets`
@@ -1040,22 +1044,23 @@ WHERE g.id = :generation_id;
 
 ### 6.0 Metric contract & registry
 
-Every metric implements `Metric` (`core/protocols.py`): `name`, `version`,
+Every metric implements `Metric` (`domain/metric.py`): `name`, `version`,
 `task_types`, `requires`, `score()`, `aggregate()`. Aggregation is **metric‑specific**.
 
-`MetricRegistry.defaults()` registers `exact_match` plus all `builtin_metrics()` from
-`scoring/catalog.py`. Entry points under `evalharness.metrics` add more (today:
-`bertscore` → `BERTScoreMetric`). Discover names:
+`MetricRegistry.defaults()` registers `exact_match` (it needs an injected `Normalizer`);
+every other metric is an `evalharness.metrics` entry point loaded by
+`MetricRegistry.discover()`, one module per metric under `scoring/metrics/<family>/`.
+`METRIC_FAMILIES` and `METRICS_ENABLED` narrow the set. Discover names:
 
 ```bash
-uv run python -c "from evalharness.scoring.registry import MetricRegistry; \
-print(MetricRegistry.defaults().names())"
+uv run evalctl metrics list
 ```
 
 Current built‑ins:
 `assertions`, `chrf_pp`, `classification`, `exact_match`, `json_field_f1`,
 `json_validity`, `meteor`, `normalized_levenshtein`, `numeric_assertion`,
-`retrieval_ndcg_10`, `rouge_l`, `sacrebleu`, `squad_f1`.
+`retrieval_map`, `retrieval_mrr`, `retrieval_ndcg_10`, `retrieval_precision_at_k`,
+`rouge_l`, `sacrebleu`, `squad_f1`, plus `bertscore_f1` with the `metrics-ml` extra.
 
 `evalctl run` scores the manifest's `task_metrics`, defaulting to `exact_match`
 only when the manifest declares none; use `runs rescore --metrics …` for the
@@ -1159,6 +1164,14 @@ For cutoffs \(k \in \{1,3,5,10,20\}\) detail includes:
 - **Primary value:** **NDCG@10** with exponential gain
   \(\mathrm{DCG}=\sum_i (2^{rel_i}-1)/\log_2(i+1)\), normalized by ideal DCG
 - **recall_ceiling** = min(1, \|ranking\| / \|relevant\|)
+
+#### `retrieval_precision_at_k`, `retrieval_mrr`, `retrieval_map` v1.0.0
+
+The same math as the corresponding NDCG detail keys, scored and aggregated as metrics in
+their own right so each can be sliced and gated on its own: P@10 as the primary value
+(every cutoff in the detail), reciprocal rank of the first hit, and mean average
+precision. The NDCG detail keys stay for one release, then contract. A case whose
+judgments are all graded `0` is excluded, same as an empty `qrels`.
 
 Zero‑relevance queries return `NULL` with `excluded: zero_relevance`. Ties break by
 original order (`dict.fromkeys`).
@@ -1359,9 +1372,10 @@ Line‑by‑line:
 - **Q: How do I add a provider?** Implement `Provider`, register one
   `evalharness.providers` entry point. Prefer wrapping via `create_provider` so
   limiter/breaker apply.
-- **Q: How do I add a metric?** Implement `Metric`, register in
-  `MetricRegistry.defaults()` or an `evalharness.metrics` entry point; rescore
-  historical runs with zero inference.
+- **Q: How do I add a metric?** Implement `Metric` in its own module under
+  `scoring/metrics/<family>/`, add an `evalharness.metrics` entry point named for the
+  metric, and map it to a family in `scoring/families.py` (or `MetricRegistry.defaults()`
+  if it needs an injected collaborator); rescore historical runs with zero inference.
 
 ### 8.4 Known gaps / deferred
 
@@ -1385,13 +1399,15 @@ Only items that are **truly not on current `main`** (or intentionally unfinished
 | Concern | Path |
 |---------|------|
 | CLI | `src/evalharness/cli/` |
-| Config | `src/evalharness/config.py` |
-| Core types | `src/evalharness/core/{models,enums,protocols}.py` |
+| Composition root and config | `src/evalharness/app/{bootstrap,container,settings}.py` |
+| Use cases | `src/evalharness/services/` |
+| Domain types | `src/evalharness/domain/{dataset,generation,scoring,run,enums,metric,provider,ports}.py` |
+| Repositories | `src/evalharness/repositories/` |
 | Executor | `src/evalharness/execution/executor.py` |
 | Providers | `src/evalharness/providers/{ollama,openai_compatible,mock,runtime,registry,config}.py` |
 | Scoring | `src/evalharness/scoring/{engine,registry,catalog,exact_match,normalizer,calibration,embeddings,ml,stats}.py` |
 | Statistics | `src/evalharness/statistics/{core,comparison}.py` |
-| Store | `src/evalharness/store/{models,repository,db}.py` |
+| Store | `src/evalharness/db/{models,db}.py` |
 | Reporting | `src/evalharness/reporting/report.py` + `templates/` |
 | Migrations | `alembic/versions/000{1,2,3}_*.py` |
 | Release E2E | `scripts/run_release_e2e.py` |

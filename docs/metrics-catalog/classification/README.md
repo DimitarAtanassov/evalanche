@@ -8,7 +8,7 @@ Cohen's κ — all in one pass, using scikit‑learn.
 
 This family has a single metric, so this README *is* the in‑depth metric doc.
 
-- **Code:** [`ClassificationMetric`](../../../src/evalharness/scoring/catalog.py)
+- **Code:** [`ClassificationMetric`](../../../src/evalharness/scoring/metrics/classification/labels.py)
 - **Related:** [ROC‑AUC / PR‑AUC](../calibration/README.md) live in the calibration family
   (they need scores/confidences, not hard labels).
 
@@ -64,7 +64,7 @@ Aggregate detail (all via scikit‑learn over the collected `(expected, predicte
   \([-1, 1]\), 0 = chance.
 - **Cohen's κ** = `cohen_kappa_score` — agreement corrected for chance.
 
-```242:261:src/evalharness/scoring/catalog.py
+```python
         accuracy = float(accuracy_score(expected, predicted)) if expected else 0.0
         precision, recall, f1, _ = (
             precision_recall_fscore_support(
@@ -134,7 +134,7 @@ Aggregate detail (all via scikit‑learn over the collected `(expected, predicte
 
 ### 10. References & code
 
-- Code: [`ClassificationMetric`](../../../src/evalharness/scoring/catalog.py); scikit‑learn
+- Code: [`ClassificationMetric`](../../../src/evalharness/scoring/metrics/classification/labels.py); scikit‑learn
   `sklearn.metrics`.
 - Guide: [§6.2](../../guide.md#62-classification). Narrative:
   [`metrics.md`](../../metrics.md#classification).

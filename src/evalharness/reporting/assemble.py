@@ -7,18 +7,18 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, cast
 
-from evalharness.core.constants import (
+from evalharness.domain.constants import (
     OVERALL_SLICE,
     REPORT_SCHEMA_VERSION,
 )
-from evalharness.core.constants import (
+from evalharness.domain.constants import (
     PRIMARY_METRIC as PRIMARY_METRIC,  # re-exported: callers import the default from here
 )
-from evalharness.core.enums import FailureOutcome
-from evalharness.core.models import Case
+from evalharness.domain.dataset import Case, DatasetRef
+from evalharness.domain.enums import FailureOutcome
+from evalharness.domain.run import ModelVersionRef, PromptTemplateRef
 from evalharness.scoring.registry import MetricRegistry
 from evalharness.statistics import percentile, wilson_interval
-from evalharness.store.models import DatasetRow, ModelVersionRow, PromptTemplateRow
 
 SCHEMA_VERSION = REPORT_SCHEMA_VERSION
 HARNESS_OUTCOMES = {FailureOutcome.HARNESS_ERROR.value, FailureOutcome.HARNESS_TIMEOUT.value}
@@ -105,7 +105,7 @@ def _reference_text(case: Case) -> str | None:
     return None
 
 
-def _model_context(model: ModelVersionRow | None) -> dict[str, Any]:
+def _model_context(model: ModelVersionRef | None) -> dict[str, Any]:
     if model is None:
         return {
             "provider": "",
@@ -127,7 +127,7 @@ def _model_context(model: ModelVersionRow | None) -> dict[str, Any]:
     }
 
 
-def _dataset_context(dataset: DatasetRow | None, case_count: int) -> dict[str, Any]:
+def _dataset_context(dataset: DatasetRef | None, case_count: int) -> dict[str, Any]:
     if dataset is None:
         return {
             "name": "",
@@ -155,7 +155,7 @@ def _dataset_context(dataset: DatasetRow | None, case_count: int) -> dict[str, A
     }
 
 
-def _prompt_context(template: PromptTemplateRow | None) -> dict[str, Any]:
+def _prompt_context(template: PromptTemplateRef | None) -> dict[str, Any]:
     if template is None:
         return {"name": "", "version": "", "content_sha256": "", "body": ""}
     return {
@@ -217,7 +217,11 @@ def _case_examples(
                     "input": _format_inputs(dict(case.inputs or {})),
                     "reference": _reference_text(case),
                     "output": _truncate(generation.output),
-                    "outcome": generation.outcome,
+                    "outcome": (
+                        generation.outcome.value
+                        if hasattr(generation.outcome, "value")
+                        else generation.outcome
+                    ),
                     "metric": primary_metric if score is not None else None,
                     "metric_value": score.value if score is not None else None,
                     "passed": passed,
@@ -238,7 +242,7 @@ def _primary_uses_pass_rate(metric_name: str) -> bool:
     signal. Those primaries headline the overall aggregate mean instead.
     """
     try:
-        metric = MetricRegistry.defaults().get(metric_name)
+        metric = MetricRegistry.discover().get(metric_name)
     except ValueError:
         return True
     config = getattr(metric, "config", None)
@@ -380,11 +384,27 @@ def assemble_run_report(
         pass_rate_ci=pass_rate_ci,
         confidence_method=confidence_method,
         flaky_cases_excluded=False,
-        outcome_histogram=dict(sorted(Counter(row.outcome for row in generations).items())),
+        outcome_histogram=dict(
+            sorted(
+                Counter(
+                    row.outcome.value if hasattr(row.outcome, "value") else str(row.outcome)
+                    for row in generations
+                ).items()
+            )
+        ),
         harness_failures=harness_failures,
         latency=latency,
         finish_reasons=dict(
-            sorted(Counter(row.finish_reason or "unknown" for row in generations).items())
+            sorted(
+                Counter(
+                    (
+                        row.finish_reason.value
+                        if row.finish_reason is not None and hasattr(row.finish_reason, "value")
+                        else (row.finish_reason or "unknown")
+                    )
+                    for row in generations
+                ).items()
+            )
         ),
         metric_aggregates=[
             {

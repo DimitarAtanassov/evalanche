@@ -38,11 +38,11 @@ comparisons can be recomputed — all without re‑calling a model.
 
 ```mermaid
 flowchart LR
-  CLI[evalctl] --> Wiring[wiring.AppContext<br/>composition root]
-  Wiring --> Pipeline[pipeline.run_evaluation]
-  Wiring --> Compare[compare.compare_runs]
-  Wiring --> Judge[judge]
-  Wiring --> Rag[rag]
+  CLI[evalctl] --> Root[app.build_container<br/>composition root]
+  Root --> Pipeline[services.run_evaluation]
+  Root --> Compare[services.compare_runs]
+  Root --> Judge[judge]
+  Root --> Rag[rag]
   CLI --> Stats[statistics]
   CLI --> Suite[suite]
 
@@ -51,21 +51,21 @@ flowchart LR
   Pipeline --> Engine[ScoringEngine]
   Pipeline --> Reporter[Reporter]
 
-  Loader --> Store[(PostgreSQL 16 + pgvector)]
+  Loader --> Repos[repositories.RunStoreUow]
+  Exec --> Repos
+  Engine --> Repos
+  Compare --> Repos
+  Reporter --> Repos
+  Repos --> Store[(PostgreSQL 16 + pgvector)]
   Exec --> Reg[ProviderRegistry + factory]
   Reg --> Managed[ManagedProvider<br/>limiter + breaker]
   Managed --> Ollama[Ollama]
   Managed --> OpenAI[OpenAI-compatible]
   Managed --> Mock[Mock]
   Exec --> Cache[(response_cache)]
-  Exec --> Store
 
   Engine --> Registry[MetricRegistry]
   Registry --> Catalog[catalog + exact_match + ml]
-  Engine --> Store
-
-  Compare --> Store
-  Reporter --> Store
 
   Reporter --> RunArt["report JSON / HTML / JUnit"]
   Compare --> CmpArt["comparison JSON"]
@@ -86,23 +86,21 @@ flowchart LR
 | Concern | Package / file | Responsibility |
 |---------|----------------|----------------|
 | CLI surface | `evalharness/cli/` | `__init__.py` assembles the Typer app from one module per command: `power`, `score`, `calibrate`, `dataset`, `run`, `runs`, `suite`, `judge`, `rag`. `_common` holds the console/logger/JSON emitter, `_provider` the call policy and provider teardown shared by the live judge and RAG paths. Commands do argument parsing, console output, and exit codes only |
-| Composition root | `evalharness/wiring.py` | `AppContext` (frozen) plus `build_app_context()`: the only place that picks concrete collaborators (settings, provider builder, scoring‑engine factory, run store). No DI framework and no container; services declare the same pieces as optional parameters that default to the production choice, so nothing below this module imports it |
-| Run pipeline | `evalharness/pipeline/run.py` | `run_evaluation`: dataset load and validate, run row, execution, rescore, report write. Transport‑neutral, so the CLI and scripts drive the same path |
-| Comparison | `evalharness/compare/service.py` | `compare_runs`: paired comparison of two stored runs on one metric, emitting the comparison artifact |
-| Configuration | `evalharness/config.py` | `Settings` (env‑backed): DB URL, provider URLs, timeouts, retry/coverage defaults, judge/NLI capacity |
-| Core types | `evalharness/core/{models,enums,protocols,ports}.py` | `Case`, `Generation`, `ScoreValue`, `AggregateValue`; `TaskType`/`FailureOutcome`/`ErrorClass`; the `Provider` and `Metric` protocols; the `RunStore` persistence port and its session‑bound factory |
-| Shared constants | `evalharness/core/constants.py` | `OVERALL_SLICE`, `PRIMARY_METRIC`, and the published schema versions (`REPORT_SCHEMA_VERSION`, `COMPARE_SCHEMA_VERSION`, `SUITE_SCHEMA_VERSION`) |
+| Composition root | `evalharness/app/` | `build_container()` returns a frozen `AppContainer` (settings, provider builder, scoring‑engine factory, run store): the only place that picks concrete collaborators. `settings.py` holds `Settings`. No DI framework; services declare the same pieces as **required** parameters, so a caller cannot half‑substitute a dependency, and nothing below `app/` imports it |
+| Use cases | `evalharness/services/` | One module per entrypoint an interface drives: `evaluation`, `compare`, `scoring`, `dataset`, `gates`, `judge`, `matrix`, `rag`, `suite`. Transport‑neutral, so the CLI and scripts drive the same path. `evaluation.run_evaluation` sequences dataset load and validate, run row, execution, rescore, report write; `compare.compare_runs` emits the paired‑comparison artifact |
+| Domain | `evalharness/domain/{dataset,generation,scoring,run,enums,constants,metric,provider,ports}.py` | `Case`, `Generation`, `ScoreValue`, `AggregateValue`; `TaskType`/`FailureOutcome`/`ErrorClass`; the `Provider` and `Metric` protocols; the `RunStore` persistence port and its session‑bound factory; `OVERALL_SLICE`, `PRIMARY_METRIC`, and the published schema versions. Imports nothing else in the harness |
+| Repositories | `evalharness/repositories/` | One repository per table (`datasets`, `cases`, `runs`, `generations`, `scores`, `metric_aggregates`, `model_versions`, `prompt_templates`, `response_cache`) behind `uow.RunStoreUow`, the session‑scoped unit of work that satisfies `RunStore`. `mappers.py` is the only place ORM rows become domain types |
 | Datasets (harness) | `evalharness/datasets/{loader,validator}.py` | `manifest.yaml` + `cases.jsonl` → `Case`; fail‑fast validation, holdout guard, content hashing |
 | Dataset factory (optional) | `packages/evaldatasets` (`evaldatasets`) | Offline adapters, `materialize_dataset`, synthetic source JSONL; depends on `evalanche`; installed via `evalanche[datasets]` / `--extra datasets`; CLI imports only inside `dataset materialize` |
 | Providers | `evalharness/providers/{ollama,openai_compatible,mock,registry,factory,runtime,config,call_policy,retry,structured_output}.py` | Adapters, entry‑point discovery, `factory.build_managed_provider` for the CLI paths, managed runtime (token buckets, concurrency, circuit breaker), bounded non‑generation calls, `Retry-After` parsing, strict JSON output contracts |
 | Execution | `evalharness/execution/executor.py` | Plan, bounded concurrency, retries, cache, three‑layer timeouts, checkpoint/resume, outcome classification |
-| Scoring | `evalharness/scoring/{engine,registry,catalog,exact_match,normalizer,calibration,embeddings,ml,stats}.py` | Versioned metrics, zero‑inference rescore, per‑run aggregates |
+| Scoring | `evalharness/scoring/{engine,registry,catalog,base,exact_match,normalizer,calibration,embeddings,ml,stats}.py` + `metrics/` | Versioned metrics, zero‑inference rescore, per‑run aggregates. `metrics/` splits the catalog into independent families (`classification`, `lexical`, `overlap`, `retrieval`, `structured`) that share only `base.py`, so adding a metric stays a local change |
 | Statistics | `evalharness/statistics/{core,comparison}.py` | Wilson, BCa, paired bootstrap, McNemar, BH, Cohen's h, pass@k, power, flaky detection |
 | Judge | `evalharness/judge/{runner,live,rubric,models,labels,pairwise,agreement,calibrate,text,io,errors,mock_responses}.py` | Pointwise and pairwise judging (deterministic mock runner and live provider runner), rubric loading, human‑label loading, holdout calibration, and the gating bit |
 | RAG evidence | `evalharness/rag/{evidence,live,claims,citations,context,faithfulness,text,errors}.py` | `rag_evidence.json` from a run report plus evidence JSONL: qrels context precision/recall, claim decomposition, citation attribution, faithfulness through an optional NLI provider seam |
 | Suite | `evalharness/suite/{loader,builder,render,models}.py` + `templates/` | Artifact‑only multi‑run benchmark suites: strict local validation of every declared artifact, deterministic assembly, offline HTML |
 | Artifact contracts | `evalharness/artifacts/calibration.py` | `CalibrationArtifact` and friends, owned by neither the judge producer nor the suite consumer so the dependency stays one‑directional |
-| Store | `evalharness/store/{models,repository,db}.py` | Async SQLAlchemy ORM, repository, Alembic‑owned session/engine |
+| Database | `evalharness/db/{models,session}.py` | Async SQLAlchemy ORM row definitions, session/engine factory, and Alembic‑driven upgrades (`init_db`). Table access lives in `repositories/` |
 | Reporting | `evalharness/reporting/report.py` + `templates/` | Coverage, histograms, latency, CIs; JSON/HTML/JUnit; publishability gate |
 | Charts | `evalharness/charts.py` | Offline, byte‑reproducible Vega‑Lite embedding shared by `reporting` and `suite/render`; each view supplies its own theme |
 | Hashing / observability | `evalharness/{hashing,observability,cli_progress}.py` | Canonical SHA‑256; structured events, privacy-safe payload summaries, progress callbacks/Rich adapter, OpenTelemetry |
@@ -110,23 +108,36 @@ flowchart LR
 
 ## Seams (do not violate)
 
-1. **`Provider` protocol** (`core/protocols.py`) — the only surface required to add a
+1. **`Provider` protocol** (`domain/provider.py`) — the only surface required to add a
    backend. Register via an `evalharness.providers` entry point. No executor, scorer,
    store, or CLI edits. See [providers.md](providers.md).
-2. **`Metric` protocol** (`core/protocols.py`) — aggregation is metric‑specific; never
+2. **`Metric` protocol** (`domain/metric.py`) — aggregation is metric‑specific; never
    assume `mean()`. A metric owns both its per‑item `score()` and its `aggregate()`.
    See [metrics.md](metrics.md).
-3. **`RunStore` protocol** (`core/ports.py`) — every persistence call the pipeline,
-   executor, scoring engine, and comparison make against one session.
-   `store/repository.py:RunRepository` satisfies it structurally, so the store owns no
-   back‑edge to the port. Those callers take the store from `AppContext` rather than
-   constructing a repository, which is what makes the seam substitutable. `reporting`
-   is the deliberate exception: it also reads three definition rows straight off the
-   session, so it stays on the concrete repository until that is worth changing.
-4. **Content addressing** — datasets, templates, and run configs are SHA‑256 hashed;
+3. **`RunStore` protocol** (`domain/ports.py`) — every persistence call the services,
+   executor, scoring engine, comparison, and reporting make against one session. It is
+   row‑free: every argument and return value is a domain type, so no caller sees an ORM
+   row and the store owns no back‑edge to the port. `repositories.RunStoreUow` satisfies
+   it structurally, and `repositories/mappers.py` is the single place a row becomes a
+   domain type. Callers take the store from the container rather than constructing a
+   repository, which is what makes the seam substitutable.
+4. **Composition root** (`app/build_container`) — the only module that picks concrete
+   collaborators. A service takes them as required arguments, so it cannot fall back to
+   a production default and quietly bypass an injected store.
+5. **Content addressing** — datasets, templates, and run configs are SHA‑256 hashed;
    silent comparison across different hashes is forbidden. See [principles.md](principles.md).
-5. **Harness vs model failures** — distinct outcomes; harness failures are excluded
+6. **Harness vs model failures** — distinct outcomes; harness failures are excluded
    from model‑quality denominators. See [dataplane.md](dataplane.md#outcome-taxonomy).
+
+The seams a stray import can break are machine‑checked rather than left to review.
+`[tool.importlinter]` in `pyproject.toml` declares three contracts, and
+`uv run lint-imports` fails CI on a violation:
+
+| Contract | What it forbids |
+|----------|-----------------|
+| Domain depends on nothing in the harness | `domain` importing `app`, `cli`, `providers`, `repositories`, `services`, or `db`, directly or transitively |
+| Services never touch the ORM, the CLI, or the composition root | `services` directly importing `db.models`, `cli`, or the container (`app.bootstrap`, `app.container`). `app.settings` is allowed: `Settings` is an injected parameter, not a wiring escape |
+| Metric families do not cross-import | One family under `scoring/metrics/` importing another; shared helpers live in `scoring/base.py` |
 
 ## Versioning surface
 
@@ -150,8 +161,8 @@ re‑digests what it loads instead of trusting the file.
 
 | Artifact | Produced by | Consumed by |
 |----------|-------------|-------------|
-| `{run_id}.json` / `.html` / `.xml` (report schema 2.1) | `pipeline.run_evaluation` → `reporting.write_report` | `evalctl suite {validate,build}` members; `evalctl rag evidence --report` |
-| comparison JSON (schema 1.0) | `evalctl runs compare` → `compare.compare_runs` | `evalctl suite {validate,build}` compares |
+| `{run_id}.json` / `.html` / `.xml` (report schema 2.1) | `services.run_evaluation` → `reporting.write_report` | `evalctl suite {validate,build}` members; `evalctl rag evidence --report` |
+| comparison JSON (schema 1.0) | `evalctl runs compare` → `services.compare_runs` | `evalctl suite {validate,build}` compares |
 | `judgment.json` | `evalctl judge run` → `judge/runner.py` (mock) or `judge/live.py` (provider) | `evalctl judge validate`, `evalctl judge attach-calibration`, suite `judge_artifacts` |
 | `calibration.json` | `evalctl judge validate` → `judge/calibrate.py` | `evalctl judge attach-calibration`, suite `calibrations` |
 | `rag_evidence.json` (schema 0.1) | `evalctl rag evidence` → `rag/evidence.py` (mock NLI) or `rag/live.py` (provider NLI) | suite `rag_artifacts` |

@@ -35,7 +35,7 @@ For each cutoff \(k\), with \(H_k = |\text{relevant} \cap \text{top‑}k|\):
 P@k = \frac{H_k}{k}, \qquad R@k = \frac{H_k}{|\text{relevant}|}, \qquad \text{Hit@}k = \mathbb{1}[H_k > 0].
 \]
 
-```296:301:src/evalharness/scoring/catalog.py
+```39:44:src/evalharness/scoring/metrics/retrieval/ndcg.py
         for cutoff in self.config["cutoffs"]:
             selected = ranking[:cutoff]
             hits = sum(doc in relevant for doc in selected)
@@ -75,5 +75,5 @@ values are always present in `detail` when the case is scored (not `NULL`).
 
 ## References & code
 
-- Code: [`RetrievalMetric`](../../../src/evalharness/scoring/catalog.py).
+- Code: [`RetrievalMetric`](../../../src/evalharness/scoring/metrics/retrieval/ndcg.py).
 - Guide: [§6.4](../../guide.md#64-ranking--retrieval).

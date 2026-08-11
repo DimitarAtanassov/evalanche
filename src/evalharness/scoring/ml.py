@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from evalharness.core.enums import Requirement
-from evalharness.core.models import Case, Generation, ScoringContext
-from evalharness.scoring.catalog import ALL_TEXT_TASKS, ScalarMetric, _reference
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import Requirement
+from evalharness.domain.generation import Generation
+from evalharness.domain.scoring import ScoringContext
+from evalharness.scoring.base import ALL_TEXT_TASKS, ScalarMetric, reference_text
 
 try:
     from bert_score import score as _bert_score
@@ -40,7 +42,7 @@ class BERTScoreMetric(ScalarMetric):
     def value(
         self, gen: Generation, case: Case, ctx: ScoringContext
     ) -> tuple[float | None, dict[str, Any]]:
-        reference = _reference(case)
+        reference = reference_text(case)
         if gen.output is None or reference is None:
             return None, {"reason": "missing"}
         if _bert_score is None:

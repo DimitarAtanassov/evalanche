@@ -2,7 +2,7 @@
 
 import pytest
 
-from evalharness.core.models import GenerationRequest, Message
+from evalharness.domain.generation import GenerationRequest, Message
 from evalharness.providers.mock import MOCK_DIGEST, MockProvider
 
 

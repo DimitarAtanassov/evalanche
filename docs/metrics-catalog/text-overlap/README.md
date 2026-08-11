@@ -13,7 +13,7 @@ For meaning, cross over to [semantic similarity](../semantic-similarity/README.m
 faithfulness you ultimately need human or LLM judgment (the latter is
 [deferred](../../guide.md#84-known-gaps--deferred)).
 
-All live in [`scoring/catalog.py`](../../../src/evalharness/scoring/catalog.py) except
+All live in [`scoring/metrics/overlap/`](../../../src/evalharness/scoring/metrics/overlap/) except
 BERTScore, which is in [`scoring/ml.py`](../../../src/evalharness/scoring/ml.py) behind the
 `metrics-ml` extra.
 

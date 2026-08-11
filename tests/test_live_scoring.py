@@ -10,11 +10,11 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-import evalharness.wiring as wiring
+import evalharness.providers.factory as provider_factory
+from evalharness.app.settings import get_settings
 from evalharness.cli import app
-from evalharness.config import get_settings
-from evalharness.core.enums import ErrorClass, FinishReason
-from evalharness.core.models import (
+from evalharness.domain.enums import ErrorClass, FinishReason
+from evalharness.domain.generation import (
     Capabilities,
     GenerationRequest,
     GenerationResponse,
@@ -744,8 +744,10 @@ def test_live_judge_cli_closes_provider(tmp_path: Path, monkeypatch: pytest.Monk
         encoding="utf-8",
     )
     provider = FakeProvider(['{"schema_version":"1.0","reasoning":"Correct.","score":5}'])
-    # The judge command takes its provider builder from the composition root.
-    monkeypatch.setattr(wiring, "build_managed_provider", lambda *args, **kwargs: provider)
+    # The composition root resolves the provider builder from this module per call.
+    monkeypatch.setattr(
+        provider_factory, "build_managed_provider", lambda *args, **kwargs: provider
+    )
 
     result = runner.invoke(
         app,
@@ -780,7 +782,9 @@ def test_live_judge_cli_closes_provider(tmp_path: Path, monkeypatch: pytest.Monk
 
 def test_live_rag_cli_closes_provider(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     provider = FakeProvider(['{"schema_version":"1.0","label":"entailment"}'] * 5)
-    monkeypatch.setattr(wiring, "build_managed_provider", lambda *args, **kwargs: provider)
+    monkeypatch.setattr(
+        provider_factory, "build_managed_provider", lambda *args, **kwargs: provider
+    )
     output = tmp_path / "rag.json"
 
     result = runner.invoke(
@@ -818,7 +822,9 @@ def test_live_rag_cli_closes_provider_when_the_run_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = RaisingProvider(ValueError("malformed request"))
-    monkeypatch.setattr(wiring, "build_managed_provider", lambda *args, **kwargs: provider)
+    monkeypatch.setattr(
+        provider_factory, "build_managed_provider", lambda *args, **kwargs: provider
+    )
     output = tmp_path / "rag.json"
 
     result = runner.invoke(

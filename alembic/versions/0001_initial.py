@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from alembic import op
-from evalharness.store.models import Base
+from evalharness.db.models import Base
 
 revision = "0001_initial"
 down_revision = None

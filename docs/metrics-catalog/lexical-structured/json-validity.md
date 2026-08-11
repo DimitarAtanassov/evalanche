@@ -32,7 +32,7 @@ you attach to the case. Answer *whether* first; measure *how right* with
 \end{cases}
 \]
 
-```176:183:src/evalharness/scoring/catalog.py
+```23:30:src/evalharness/scoring/metrics/structured/json_validity.py
         try:
             parsed = json.loads(gen.output or "")
             schema = case.inputs.get("json_schema")
@@ -89,5 +89,5 @@ Schema validation uses the `jsonschema` library's `validate(parsed, schema)`.
 
 ## References & code
 
-- Code: [`JsonValidityMetric`](../../../src/evalharness/scoring/catalog.py); `jsonschema`.
+- Code: [`JsonValidityMetric`](../../../src/evalharness/scoring/metrics/structured/json_validity.py); `jsonschema`.
 - Guide: [§6.1](../../guide.md#61-deterministic--lexical).

@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from evalharness.suite.models import StrictModel
+from evalharness.domain.artifacts import StrictModel
 
 type JsonValue = Any
 

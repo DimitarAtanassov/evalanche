@@ -9,8 +9,8 @@ from typing import Any
 
 import httpx
 
-from evalharness.core.enums import ErrorClass, FinishReason
-from evalharness.core.models import (
+from evalharness.domain.enums import ErrorClass, FinishReason
+from evalharness.domain.generation import (
     Capabilities,
     GenerationRequest,
     GenerationResponse,

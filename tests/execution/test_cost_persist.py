@@ -7,16 +7,16 @@ from pathlib import Path
 
 import pytest
 
-from evalharness.config import Settings, get_settings
-from evalharness.core.constants import GATES_SCHEMA_VERSION
-from evalharness.core.enums import ErrorClass, FailureOutcome, FinishReason
-from evalharness.core.models import (
+from evalharness.app.settings import Settings, get_settings
+from evalharness.datasets import dataset_upsert_fields, load_dataset, validate_dataset
+from evalharness.domain.constants import GATES_SCHEMA_VERSION
+from evalharness.domain.enums import ErrorClass, FailureOutcome, FinishReason
+from evalharness.domain.generation import (
     Capabilities,
     GenerationRequest,
     GenerationResponse,
     ModelVersion,
 )
-from evalharness.datasets import dataset_upsert_fields, load_dataset, validate_dataset
 from evalharness.execution.executor import Executor, render_prompt
 from evalharness.gates.evaluate import evaluate_gates
 from evalharness.gates.models import (
@@ -28,8 +28,8 @@ from evalharness.gates.models import (
 )
 from evalharness.hashing import sha256_hex
 from evalharness.reporting.report import build_report, report_to_json
-from evalharness.store.db import session_scope
-from evalharness.store.repository import RunRepository
+from evalharness.db.session import session_scope
+from evalharness.repositories import RunStoreUow
 from evalharness.suite.models import RunArtifact
 
 
@@ -123,7 +123,7 @@ async def _create_run(executor: Executor, *, seed: int) -> object:
     template_sha = sha256_hex(template_body)
 
     async with session_scope() as session:
-        repo = RunRepository(session)
+        repo = RunStoreUow(session)
         dataset_id = await repo.upsert_dataset(**dataset_upsert_fields(bundle))
         prompt_template_id = await repo.upsert_prompt_template(
             name="t", version="1", body=template_body, sha256=template_sha
@@ -177,7 +177,7 @@ async def _run_with_cost(
     await executor.execute_run(run_id, concurrency=1)
 
     async with session_scope() as session:
-        repo = RunRepository(session)
+        repo = RunStoreUow(session)
         gens = await repo.get_generations_for_run(run_id)
 
     return run_id, list(gens), len(bundle.cases)

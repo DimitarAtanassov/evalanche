@@ -10,9 +10,10 @@ import pytest
 import yaml
 from evaldatasets import MaterializationError, materialize_dataset
 
-from evalharness.core.enums import FailureOutcome
-from evalharness.core.models import Case, Generation
 from evalharness.datasets import DatasetManifestError, DatasetTier, load_dataset, validate_dataset
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import FailureOutcome
+from evalharness.domain.generation import Generation
 from evalharness.scoring.engine import ScoringEngine
 
 DATASET_ROOT = Path("fixtures/datasets")

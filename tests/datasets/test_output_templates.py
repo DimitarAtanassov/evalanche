@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from evalharness.core.enums import TaskType
-from evalharness.core.models import Case
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import TaskType
 from evalharness.execution.executor import render_prompt
 
 

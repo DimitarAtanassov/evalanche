@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from evalharness.core.enums import TaskType
-from evalharness.core.models import Case
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import TaskType
 from evalharness.scoring.engine import ScoringEngine, slice_key
 
 

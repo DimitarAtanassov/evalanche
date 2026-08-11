@@ -9,9 +9,10 @@ from typing import Any
 
 import yaml
 
-from evalharness.core.enums import FailureOutcome
-from evalharness.core.models import Case, Generation
 from evalharness.datasets import load_dataset
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import FailureOutcome
+from evalharness.domain.generation import Generation
 
 SMOKE_ROOT = Path("fixtures/datasets")
 SOURCE_ROOT = Path("packages/evaldatasets/src/evaldatasets/sources")

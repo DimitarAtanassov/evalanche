@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from evalharness.core.protocols import Provider
+from evalharness.domain.provider import Provider
 from evalharness.hashing import sha256_hex
 
 

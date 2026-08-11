@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from evalharness.artifacts.calibration import CalibrationArtifact
-from evalharness.core.constants import GATES_SCHEMA_VERSION, OVERALL_SLICE
+from evalharness.domain.constants import GATES_SCHEMA_VERSION, OVERALL_SLICE
 from evalharness.gates.errors import GatesValidationError
 from evalharness.gates.models import (
     CalibratedJudgeGate,

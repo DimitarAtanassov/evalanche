@@ -6,8 +6,8 @@ import httpx
 import pytest
 import respx
 
-from evalharness.core.enums import FinishReason
-from evalharness.core.models import GenerationRequest, Message
+from evalharness.domain.enums import FinishReason
+from evalharness.domain.generation import GenerationRequest, Message
 from evalharness.providers.openai_compatible import OpenAICompatibleProvider
 
 

@@ -12,7 +12,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from evalharness.config import get_settings
+from evalharness.app.settings import get_settings
 from evalharness.providers.factory import build_managed_provider
 from evalharness.providers.mock import MockProvider
 from evalharness.providers.ollama import OllamaProvider

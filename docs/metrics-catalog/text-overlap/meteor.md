@@ -27,11 +27,11 @@ recall‑weighted harmonic mean of unigram precision/recall over the alignment, 
 grows with the number of contiguous "chunks" in the alignment. The metric wraps NLTK's
 `meteor_score` on casefolded `\w+` tokens:
 
-```453:464:src/evalharness/scoring/catalog.py
+```python
         try:
             from nltk.translate.meteor_score import meteor_score
 
-            value = float(meteor_score([_tokens(reference)], _tokens(gen.output)))
+            value = float(meteor_score([tokens(reference)], tokens(gen.output)))
             return value, {"language": "en", "resources": ["wordnet"]}
         except (ImportError, LookupError) as exc:
             return None, {
@@ -84,6 +84,6 @@ grows with the number of contiguous "chunks" in the alignment. The metric wraps 
 
 ## References & code
 
-- Code: [`MeteorMetric`](../../../src/evalharness/scoring/catalog.py); NLTK `meteor_score`.
+- Code: [`MeteorMetric`](../../../src/evalharness/scoring/metrics/overlap/meteor.py); NLTK `meteor_score`.
 - Guide: [§6.5](../../guide.md#65-summarization--generation-overlap).
 - Lineage: Banerjee & Lavie (2005), "METEOR."

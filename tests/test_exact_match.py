@@ -1,5 +1,7 @@
-from evalharness.core.enums import FailureOutcome, FinishReason, TaskType
-from evalharness.core.models import Case, Generation, ScoringContext
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import FailureOutcome, FinishReason, TaskType
+from evalharness.domain.generation import Generation
+from evalharness.domain.scoring import ScoringContext
 from evalharness.scoring.exact_match import ExactMatchMetric
 from evalharness.scoring.normalizer import Normalizer, NormalizerConfig
 

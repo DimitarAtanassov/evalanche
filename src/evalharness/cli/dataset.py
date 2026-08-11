@@ -9,14 +9,9 @@ import typer
 import yaml
 from rich.markup import escape
 
+from evalharness.app import build_container
 from evalharness.cli._common import _emit_json, console
-from evalharness.datasets import (
-    DatasetCaseError,
-    DatasetManifestError,
-    DatasetTier,
-    load_dataset,
-    validate_dataset,
-)
+from evalharness.datasets import DatasetCaseError, DatasetManifestError, DatasetTier
 from evalharness.observability import setup_logging
 
 dataset_app = typer.Typer(no_args_is_help=True)
@@ -37,12 +32,13 @@ def dataset_validate(
 ) -> None:
     """Validate a dataset manifest and cases."""
     setup_logging()
+    datasets = build_container().dataset
     try:
-        bundle = load_dataset(dataset_dir)
+        bundle = datasets.load_dataset(dataset_dir)
     except (DatasetCaseError, DatasetManifestError, json.JSONDecodeError, yaml.YAMLError) as exc:
         console.print(f"[red]ERROR[/red] {exc}")
         raise typer.Exit(1) from exc
-    report = validate_dataset(bundle, allow_holdout=final_eval)
+    report = datasets.validate_dataset(bundle, allow_holdout=final_eval)
     if report.errors:
         for err in report.errors:
             console.print(f"[red]ERROR[/red] {err}")
@@ -95,7 +91,7 @@ def dataset_materialize(
     except OSError as exc:
         console.print(f"[red]IO_ERROR[/red] {exc}")
         raise typer.Exit(2) from exc
-    bundle = load_dataset(output)
+    bundle = build_container().dataset.load_dataset(output)
     _emit_json(
         {
             "adapter": adapter,

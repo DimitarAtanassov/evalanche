@@ -13,8 +13,8 @@ from evalharness.hashing import sha256_hex
 from evalharness.observability import PipelineStage, ProgressEvent
 from evalharness.reporting.report import write_report
 from evalharness.scoring.engine import ScoringEngine
-from evalharness.store.db import session_scope
-from evalharness.store.repository import RunRepository
+from evalharness.db.session import session_scope
+from evalharness.repositories import RunStoreUow
 from tests.conftest import MockProvider
 
 
@@ -40,7 +40,7 @@ async def test_resume_produces_same_outputs(db_ready, tmp_path: Path) -> None:
     )
 
     async with session_scope() as session:
-        repo = RunRepository(session)
+        repo = RunStoreUow(session)
         dataset_id = await repo.upsert_dataset(**dataset_upsert_fields(bundle))
         prompt_template_id = await repo.upsert_prompt_template(
             name="t", version="1", body=template_body, sha256=template_sha
@@ -71,7 +71,7 @@ async def test_resume_produces_same_outputs(db_ready, tmp_path: Path) -> None:
     await asyncio.gather(*[executor._run_one(run_id, config, item, sem) for item in partial_items])
 
     async with session_scope() as session:
-        repo = RunRepository(session)
+        repo = RunStoreUow(session)
         partial_gens = await repo.get_generations_for_run(run_id)
         partial_pairs = {(g.case_id, g.repeat_idx, g.output) for g in partial_gens}
 
@@ -80,7 +80,7 @@ async def test_resume_produces_same_outputs(db_ready, tmp_path: Path) -> None:
     await executor.execute_run(run_id, concurrency=2, progress=progress.append)
 
     async with session_scope() as session:
-        repo = RunRepository(session)
+        repo = RunStoreUow(session)
         all_gens = await repo.get_generations_for_run(run_id)
         all_pairs = {(g.case_id, g.repeat_idx, g.output) for g in all_gens}
         assert len(all_gens) == len(bundle.cases)

@@ -7,10 +7,14 @@ from pathlib import Path
 
 import sacrebleu
 
-from evalharness.core.enums import FailureOutcome, TaskType
-from evalharness.core.models import Case, Generation, ScoringContext
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import FailureOutcome, TaskType
+from evalharness.domain.generation import Generation
+from evalharness.domain.scoring import ScoringContext
 from evalharness.scoring.calibration import calibration_metrics
-from evalharness.scoring.catalog import ClassificationMetric, RetrievalMetric, RougeLMetric
+from evalharness.scoring.metrics.classification.labels import ClassificationMetric
+from evalharness.scoring.metrics.overlap.rouge_l import RougeLMetric
+from evalharness.scoring.metrics.retrieval.ndcg import RetrievalMetric
 
 
 def generation(output: str) -> Generation:

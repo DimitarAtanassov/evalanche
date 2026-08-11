@@ -8,7 +8,7 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
-from evalharness.core.constants import OVERALL_SLICE, SUITE_SCHEMA_VERSION
+from evalharness.domain.constants import OVERALL_SLICE, SUITE_SCHEMA_VERSION
 from evalharness.hashing import judgment_identity_digest
 from evalharness.observability import sanitize_text
 from evalharness.suite.loader import canonical_json, load_suite

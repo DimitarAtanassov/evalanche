@@ -8,8 +8,8 @@ from io import StringIO
 import pytest
 from rich.console import Console
 
+from evalharness.app.settings import get_settings
 from evalharness.cli_progress import PipelineProgress
-from evalharness.config import get_settings
 from evalharness.observability import (
     PipelineStage,
     ProgressEvent,

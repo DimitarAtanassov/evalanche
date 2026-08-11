@@ -345,7 +345,7 @@ def test_cli_rag_evidence(tmp_path: Path) -> None:
 
 def test_rag_package_has_no_hf_or_store_imports() -> None:
     rag_root = ROOT / "src" / "evalharness" / "rag"
-    forbidden = ("evalharness.store", "huggingface_hub", "datasets", "transformers", "torch")
+    forbidden = ("evalharness.db", "huggingface_hub", "datasets", "transformers", "torch")
     for path in rag_root.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):

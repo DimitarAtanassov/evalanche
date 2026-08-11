@@ -131,6 +131,7 @@ def test_runs_compare_write_failure_exits_2(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_compare(
+        _self: object,
         *_args: object,
         **_kwargs: object,
     ) -> dict[str, object]:
@@ -142,7 +143,10 @@ def test_runs_compare_write_failure_exits_2(
             "result": {"metric": "exact_match", "n": 0},
         }
 
-    monkeypatch.setattr("evalharness.cli.runs.compare_runs", fake_compare)
+    monkeypatch.setattr(
+        "evalharness.services.compare.CompareService.compare_runs",
+        fake_compare,
+    )
     output = tmp_path / "missing-parent" / "compare.json"
 
     result = CLI.invoke(

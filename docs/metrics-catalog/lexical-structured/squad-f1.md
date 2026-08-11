@@ -43,8 +43,8 @@ Empty‑bag edge cases are handled explicitly: if `predicted` is empty, precisio
 `float(not expected)`; symmetrically for recall — so two empty answers score `1.0`, and one
 empty vs one non‑empty scores `0.0`.
 
-```105:111:src/evalharness/scoring/catalog.py
-        predicted, expected = _tokens(gen.output), _tokens(reference)
+```21:26:src/evalharness/scoring/metrics/lexical/squad_f1.py
+        predicted, expected = tokens(gen.output), tokens(reference)
         common = Counter(predicted) & Counter(expected)
         overlap = sum(common.values())
         precision = overlap / len(predicted) if predicted else float(not expected)
@@ -97,7 +97,7 @@ empty vs one non‑empty scores `0.0`.
 
 ## References & code
 
-- Code: [`SquadMetric`](../../../src/evalharness/scoring/catalog.py).
+- Code: [`SquadMetric`](../../../src/evalharness/scoring/metrics/lexical/squad_f1.py).
 - Test: `test_squad_metric_token_overlap` in
   [`tests/test_metric_catalog.py`](../../../tests/test_metric_catalog.py) (asserts `0.8`).
 - Guide: [§6.1](../../guide.md#61-deterministic--lexical).

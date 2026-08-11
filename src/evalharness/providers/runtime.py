@@ -7,14 +7,14 @@ import time
 from dataclasses import replace
 from enum import StrEnum
 
-from evalharness.core.enums import ErrorClass
-from evalharness.core.models import (
+from evalharness.domain.enums import ErrorClass
+from evalharness.domain.generation import (
     Capabilities,
     GenerationRequest,
     GenerationResponse,
     ModelVersion,
 )
-from evalharness.core.protocols import Provider
+from evalharness.domain.provider import Provider
 from evalharness.observability import exception_summary, get_logger
 
 logger = get_logger(__name__)

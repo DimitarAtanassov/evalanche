@@ -301,8 +301,13 @@ See [docs/operations.md](docs/operations.md#proof-of-concept).
 ```bash
 uv run ruff check .
 uv run mypy src/evalharness
+uv run lint-imports
 uv run pytest -q
 ```
+
+`lint-imports` enforces the layering contracts in `pyproject.toml`: the domain package
+imports nothing else in the harness, services never reach the ORM or the composition
+root, and metric families do not cross-import.
 
 ## License
 

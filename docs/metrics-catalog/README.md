@@ -57,28 +57,32 @@ beside the old one instead of clobbering it. See
 
 ### The registered metrics (ground truth)
 
-`MetricRegistry.defaults()` ([`scoring/registry.py`](../../src/evalharness/scoring/registry.py))
-registers `exact_match` plus every `builtin_metrics()` from
-[`scoring/catalog.py`](../../src/evalharness/scoring/catalog.py). Confirm the live list at
-any time:
+`MetricRegistry.discover()` ([`scoring/registry.py`](../../src/evalharness/scoring/registry.py))
+registers `exact_match` plus every metric on the `evalharness.metrics` entry-point group,
+one module per metric under [`scoring/metrics/`](../../src/evalharness/scoring/metrics/).
+Confirm the live list, and why anything is disabled, at any time:
 
 ```bash
-uv run python -c "from evalharness.scoring.registry import MetricRegistry; \
-print(MetricRegistry.defaults().names())"
+uv run evalctl metrics list
 ```
 
-Today that prints exactly 13 names:
+Today that enables 17 names:
 
 ```
-['assertions', 'chrf_pp', 'classification', 'exact_match', 'json_field_f1',
- 'json_validity', 'meteor', 'normalized_levenshtein', 'numeric_assertion',
- 'retrieval_ndcg_10', 'rouge_l', 'sacrebleu', 'squad_f1']
+['assertions', 'bertscore_f1', 'chrf_pp', 'classification', 'exact_match',
+ 'json_field_f1', 'json_validity', 'meteor', 'normalized_levenshtein',
+ 'numeric_assertion', 'retrieval_map', 'retrieval_mrr', 'retrieval_ndcg_10',
+ 'retrieval_precision_at_k', 'rouge_l', 'sacrebleu', 'squad_f1']
 ```
 
-Two more layers exist beyond the default registry:
+`METRIC_FAMILIES` and `METRICS_ENABLED` narrow that set; see
+[metrics.md](../metrics.md#the-mental-model).
 
-- **`bertscore_f1`** — registered via the `evalharness.metrics` entry point and only
-  importable with the `metrics-ml` extra ([`scoring/ml.py`](../../src/evalharness/scoring/ml.py)).
+Two more layers exist beyond the registry:
+
+- **`bertscore_f1`** — registered on the same entry-point group but only importable with
+  the `metrics-ml` extra ([`scoring/ml.py`](../../src/evalharness/scoring/ml.py)); without
+  it the metric is reported as unavailable rather than breaking discovery.
 - **Helper families that are *not* registry metrics** — calibration
   ([`scoring/calibration.py`](../../src/evalharness/scoring/calibration.py)), semantic
   similarity ([`scoring/embeddings.py`](../../src/evalharness/scoring/embeddings.py)), and
@@ -110,7 +114,7 @@ flowchart TD
 | [Lexical & structured](lexical-structured/README.md) | "Does the text match the reference exactly / almost, or satisfy hard constraints and JSON shape?" | `exact_match`, `squad_f1`, `normalized_levenshtein`, `assertions`, `numeric_assertion`, `json_validity`, `json_field_f1` | Short‑form QA, extraction, fast regression gates |
 | [Classification](classification/README.md) | "How good are the labels, accounting for imbalance?" | `classification` | Label tasks (report MCC, not just accuracy) |
 | [Calibration](calibration/README.md) | "Does the model know when it doesn't know?" | `calibration.py` helpers, `evalctl calibrate` | You have real confidences and care about selective prediction |
-| [Retrieval & ranking](retrieval-ranking/README.md) | "Are the right documents ranked highly?" | `retrieval_ndcg_10` | Retrieval / RAG with graded `qrels` |
+| [Retrieval & ranking](retrieval-ranking/README.md) | "Are the right documents ranked highly?" | `retrieval_ndcg_10`, `retrieval_precision_at_k`, `retrieval_mrr`, `retrieval_map` | Retrieval / RAG with graded `qrels` |
 | [Text overlap](text-overlap/README.md) | "How much surface content is shared with the reference?" | `rouge_l`, `sacrebleu`, `chrf_pp`, `meteor`, `bertscore_f1` (extra) | Summarization / translation tripwires |
 | [Semantic similarity](semantic-similarity/README.md) | "Is the *meaning* close, beyond exact wording?" | `EmbeddingService` | Paraphrase‑tolerant checks with a calibrated threshold |
 | [Statistics](statistics/README.md) | "Is the difference real, or noise?" | `statistics/` package | Every published number and every A/B |

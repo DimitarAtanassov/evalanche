@@ -41,6 +41,8 @@ jobs:
       - run: uv sync --all-extras
       - run: uv run ruff check .
       - run: uv run mypy src/evalharness packages/evaldatasets/src/evaldatasets
+      - name: Check layering contracts
+        run: uv run lint-imports
       - run: uv run alembic upgrade head
       - run: uv run python scripts/run_poc.py
       - run: uv run pytest -q --cov=evalharness --cov-report=term-missing

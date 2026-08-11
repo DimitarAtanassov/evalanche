@@ -7,9 +7,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from evalharness.core.constants import REPORT_SCHEMA_VERSION
-from evalharness.core.models import GenerationRequest, GenerationResponse, Message, ModelVersion
-from evalharness.core.protocols import Provider
+from evalharness.domain.constants import REPORT_SCHEMA_VERSION
+from evalharness.domain.generation import (
+    GenerationRequest,
+    GenerationResponse,
+    Message,
+    ModelVersion,
+)
+from evalharness.domain.provider import Provider
 from evalharness.hashing import canonical_json, sha256_hex
 from evalharness.observability import StageTimer, get_logger, log_context
 from evalharness.providers.call_policy import (

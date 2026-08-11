@@ -36,7 +36,7 @@ Let `ranks` be the 1‑based positions of relevant docs in the ranking.
 \mathrm{MAP} = \frac{1}{|\text{relevant}|} \sum_{\text{rank } r \text{ of a relevant doc}} \frac{|\text{relevant} \cap \text{top‑}r|}{r}.
 \]
 
-```302:309:src/evalharness/scoring/catalog.py
+```45:52:src/evalharness/scoring/metrics/retrieval/ndcg.py
         ranks = [index + 1 for index, doc in enumerate(ranking) if doc in relevant]
         detail["mrr"] = 1 / min(ranks) if ranks else 0.0
         precisions = [
@@ -82,6 +82,6 @@ values are always present in `detail` when scored (MRR is `0.0` if no relevant d
 
 ## References & code
 
-- Code: [`RetrievalMetric`](../../../src/evalharness/scoring/catalog.py).
+- Code: [`RetrievalMetric`](../../../src/evalharness/scoring/metrics/retrieval/ndcg.py).
 - Guide: [§6.4](../../guide.md#64-ranking--retrieval).
 - Lineage: MAP/MRR are TREC‑era IR standards (Voorhees et al.).

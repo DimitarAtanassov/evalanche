@@ -10,9 +10,9 @@ from typing import Any
 
 import pytest
 
-from evalharness.core.enums import FailureOutcome
-from evalharness.core.models import GenerationRequest, Message
 from evalharness.datasets import load_dataset, validate_dataset
+from evalharness.domain.enums import FailureOutcome
+from evalharness.domain.generation import GenerationRequest, Message
 from evalharness.execution.executor import render_prompt
 from evalharness.hashing import sha256_hex
 from evalharness.reporting.report import (

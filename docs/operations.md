@@ -25,7 +25,7 @@ Services ([`compose.yaml`](../compose.yaml)):
 | `ollama` | `ollama/ollama:latest` | 11434 | Live inference / embeddings |
 
 Compose credentials default to user/password/db = `evalharness`. Configuration is
-env‑backed via `evalharness/config.py`; the keys live in `.env.example`
+env‑backed via `evalharness/app/settings.py`; the keys live in `.env.example`
 (`DATABASE_URL`, `OLLAMA_BASE_URL`, `HARNESS_VERSION`, `GIT_SHA`, `LOG_LEVEL`,
 `LOG_FORMAT`, `LOG_PAYLOADS`, `LOG_PAYLOAD_HASHES`, `OTEL_ENABLED`, optional
 `OTEL_EXPORTER_OTLP_ENDPOINT`, and the `OPENAI_COMPATIBLE_*` trio for that provider).
@@ -196,8 +196,12 @@ The deep troubleshooting matrix (including decoding llama.cpp slot logs and the 
 ```bash
 uv run ruff check .
 uv run mypy src/evalharness
+uv run lint-imports
 uv run pytest -q
 ```
+
+`lint-imports` checks the layering contracts declared under `[tool.importlinter]` in
+`pyproject.toml`; see [architecture.md](architecture.md#seams-do-not-violate).
 
 Performance gates (memory‑bounded planning/scoring) are described in
 [benchmarks.md](benchmarks.md).

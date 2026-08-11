@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from evalharness.core.constants import OVERALL_SLICE, REPORT_SCHEMA_VERSION
+from evalharness.domain.constants import OVERALL_SLICE, REPORT_SCHEMA_VERSION
 from evalharness.hashing import canonical_json, sha256_hex
 from evalharness.observability import get_logger
 from evalharness.rag.citations import citation_attribution

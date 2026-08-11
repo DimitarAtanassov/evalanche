@@ -33,7 +33,7 @@ With case‑folded output \(o\), required set \(C\), forbidden set \(F\):
 \text{assertions} = \mathbb{1}\Big[\big(\forall t \in C:\ t \in o\big) \wedge \big(\forall t \in F:\ t \notin o\big)\Big].
 \]
 
-```139:145:src/evalharness/scoring/catalog.py
+```19:25:src/evalharness/scoring/metrics/lexical/assertions.py
         if gen.output is None:
             return 0.0, {"reason": "missing_output"}
         folded = gen.output.casefold()
@@ -93,5 +93,5 @@ matching.
 
 ## References & code
 
-- Code: [`AssertionMetric`](../../../src/evalharness/scoring/catalog.py).
+- Code: [`AssertionMetric`](../../../src/evalharness/scoring/metrics/lexical/assertions.py).
 - Guide: [§6.1](../../guide.md#61-deterministic--lexical).

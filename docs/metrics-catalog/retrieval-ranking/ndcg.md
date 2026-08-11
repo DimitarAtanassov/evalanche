@@ -37,7 +37,7 @@ where IDCG is the DCG of the ideal ranking (relevant docs sorted by descending g
 `recall_ceiling = min(1, |ranking| / |relevant|)` reports whether the list was even long
 enough to retrieve everything relevant.
 
-```310:317:src/evalharness/scoring/catalog.py
+```53:60:src/evalharness/scoring/metrics/retrieval/ndcg.py
         dcg = sum(
             (2 ** relevant.get(doc, 0) - 1) / math.log2(index + 2)
             for index, doc in enumerate(ranking[:10])
@@ -95,7 +95,7 @@ Note `log2(index + 2)` with 0‑based `index` = \(\log_2(\text{rank}+1)\) — st
 
 ## References & code
 
-- Code: [`RetrievalMetric`](../../../src/evalharness/scoring/catalog.py).
+- Code: [`RetrievalMetric`](../../../src/evalharness/scoring/metrics/retrieval/ndcg.py).
 - Test: `test_retrieval_ndcg_and_short_list_semantics` (asserts NDCG `1.0`, P@5 `0.4`, R@5
   `1.0`).
 - Guide: [§6.4](../../guide.md#64-ranking--retrieval).

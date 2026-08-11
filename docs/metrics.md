@@ -15,7 +15,7 @@ reach for; follow the catalog when you need the math.
 
 A metric is not a number — it is an **opinion about a generation, versioned so you can
 trust the diff.** Every metric implements the `Metric` protocol
-(`core/protocols.py`): a `name`, a `version`, the `task_types` it applies to, a
+(`domain/metric.py`): a `name`, a `version`, the `task_types` it applies to, a
 `requires` set (data prerequisites like `REFERENCE` or `QRELS`), a `score()` that
 produces `ScoreValue`s for one generation, and an `aggregate()` that rolls many
 `ScoreValue`s into an `AggregateValue`. **Aggregation is metric‑specific — never assume
@@ -27,22 +27,39 @@ change metrics and rescore historical runs with **zero inference cost**. Each sc
 records `metric_config_sha256`, so a changed normalizer produces a *new* opinion beside
 the old one rather than overwriting it.
 
-Discover what is registered at any time:
+Discover what this install can score, and why anything is missing:
 
 ```bash
-uv run python -c "from evalharness.scoring.registry import MetricRegistry; \
-print(MetricRegistry.defaults().names())"
+uv run evalctl metrics list
 ```
 
-`MetricRegistry.defaults()` registers `exact_match` plus the full catalog from
-`scoring/catalog.py`. That is how every built‑in metric is registered; a built‑in never
-goes through an entry point. The `evalharness.metrics` entry‑point group is reserved for
-optional external extras that ship behind their own dependency group, today only
-`bertscore` behind `metrics-ml`. `MetricRegistry.discover()` loads an entry point with no
-arguments, so an entry‑point metric must be constructible without injected collaborators
-(`exact_match` needs a `Normalizer`, which is why it lives in `defaults()`).
-`evalctl run` scores `exact_match` by default; reach for the rest via
-`evalctl runs rescore --metrics …`.
+Every metric lives in its own module under `scoring/metrics/<family>/` and is registered
+on the `evalharness.metrics` entry‑point group in `pyproject.toml`. `MetricRegistry.discover()`
+loads them; an entry point is called with no arguments, so a metric needing an injected
+collaborator cannot use one. `exact_match` needs a `Normalizer`, so it stays in
+`MetricRegistry.defaults()` and is always registered. `evalctl run` scores `exact_match`
+by default; reach for the rest via `evalctl runs rescore --metrics …`.
+
+Two environment flags narrow the registry, both comma‑separated, both meaning "everything
+discovered" when unset or empty:
+
+- `METRIC_FAMILIES` — families to enable: `lexical`, `structured`, `classification`,
+  `retrieval`, `overlap`, `ml`, `external` (anything a third‑party distribution registers).
+  Filtering happens on the entry‑point name, so a disabled family is never imported.
+- `METRICS_ENABLED` — an allowlist of individual metric names.
+
+`exact_match` is exempt from both: it is the default primary metric, and a report without
+it has no headline. Ask for a metric the flags switched off, or one whose dependency is
+absent, and the registry says which of the two it is rather than reporting it unknown.
+
+**Dependency packaging.** `scikit-learn` (classification), `sacrebleu`, `rouge-score`, and
+`nltk` (overlap) are still core dependencies: calibration and judge agreement also import
+scikit‑learn, and moving the overlap libraries would silently change published ROUGE
+numbers on a default install (the metric falls back to an in‑tree implementation when
+`rouge_score` is absent). The family flags give the runtime gating today; the registry
+already reports an uninstalled metric instead of failing discovery, so moving a family
+behind an extra later is a `pyproject.toml` change only. `bertscore_f1` remains behind the
+`metrics-ml` extra.
 
 ## The families and when to use them
 
@@ -57,7 +74,7 @@ statistics around the comparison.
 | **Structured** | "Is the output valid, schema‑correct JSON with the right fields?" | `json_validity`, `json_field_f1` | Extraction and tool‑use tasks | [lexical-structured/](metrics-catalog/lexical-structured/README.md) |
 | **Classification** | "How good are the predicted labels, accounting for imbalance?" | `classification` | Label tasks (report MCC / balanced accuracy, not just accuracy) | [classification/](metrics-catalog/classification/README.md) |
 | **Calibration** | "Does the model know when it doesn't know?" | `calibration.py` helpers, `evalctl calibrate` | You have confidences/logprobs and care about selective prediction | [calibration/](metrics-catalog/calibration/README.md) |
-| **Retrieval / ranking** | "Are the right documents ranked highly?" | `retrieval_ndcg_10` | Retrieval / RAG with graded `qrels` | [retrieval-ranking/](metrics-catalog/retrieval-ranking/README.md) |
+| **Retrieval / ranking** | "Are the right documents ranked highly?" | `retrieval_ndcg_10`, `retrieval_precision_at_k`, `retrieval_mrr`, `retrieval_map` | Retrieval / RAG with graded `qrels` | [retrieval-ranking/](metrics-catalog/retrieval-ranking/README.md) |
 | **Overlap** | "How much surface content is shared with the reference?" | `rouge_l`, `sacrebleu`, `chrf_pp`, `meteor`, `bertscore_f1` (extra) | Summarization / translation regression tripwires | [text-overlap/](metrics-catalog/text-overlap/README.md) |
 | **Semantic similarity** | "Is the meaning close, beyond exact wording?" | `scoring/embeddings.py` (`EmbeddingService`) | Paraphrase‑tolerant QA / semantic checks with a calibrated threshold | [semantic-similarity/](metrics-catalog/semantic-similarity/README.md) |
 | **Statistics** | "Is the difference real, or noise?" | `statistics/` (Wilson, BCa, McNemar, BH, Cohen's h, pass@k, power) | Every published number and every A/B comparison | [statistics/](metrics-catalog/statistics/README.md) |
@@ -115,11 +132,18 @@ confidences (logprobs or elicited) — skip it rather than invent them. Detail:
 
 ## Retrieval / ranking
 
-`retrieval_ndcg_10` requires graded `qrels` and reports NDCG@10 as its primary value
-(with P@k, R@k, Hit@k, MRR, MAP, and a recall ceiling in the detail across cutoffs
-{1,3,5,10,20}). It uses the **exponential‑gain** DCG form — state that in reports,
-because the linear‑gain variant gives different numbers and is a classic source of
-cross‑team disagreement. Zero‑relevance queries are excluded, not scored as 0. Detail:
+`retrieval_ndcg_10` requires graded `qrels` and reports NDCG@10 as its primary value. It
+uses the **exponential‑gain** DCG form — state that in reports, because the linear‑gain
+variant gives different numbers and is a classic source of cross‑team disagreement.
+Zero‑relevance queries are excluded, not scored as 0.
+
+Three sibling metrics publish the ranking signals that used to be readable only inside the
+NDCG detail payload: `retrieval_precision_at_k` (P@10 primary, every cutoff in the detail),
+`retrieval_mrr`, and `retrieval_map`. Each is scored, aggregated, and gated on its own, so
+a regression in first‑hit rank is visible without unpacking another metric's detail. The
+NDCG detail keys (P@k, R@k, Hit@k, MRR, MAP, recall ceiling across cutoffs {1,3,5,10,20})
+are retained for one release and will be contracted after that; a dataset declaring only
+`retrieval_ndcg_10` keeps working either way. Detail:
 [metrics-catalog/retrieval-ranking/](metrics-catalog/retrieval-ranking/README.md),
 [guide.md §6.4](guide.md#64-ranking--retrieval).
 

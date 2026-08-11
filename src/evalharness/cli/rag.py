@@ -4,19 +4,13 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from typing import Any
 
 import typer
 
+from evalharness.app import build_container
 from evalharness.cli._common import _emit_json, console, logger
-from evalharness.cli._provider import (
-    _close_provider,
-    _provider_call_policy,
-    _require_live_scoring_provider,
-)
 from evalharness.observability import exception_summary, setup_logging
-from evalharness.rag import RagError, build_live_rag_evidence, build_rag_evidence
-from evalharness.wiring import AppContext, build_app_context
+from evalharness.rag import RagError
 
 rag_app = typer.Typer(no_args_is_help=True)
 
@@ -40,8 +34,9 @@ def rag_evidence(
     """Build rag_evidence.json from a run report and local evidence JSONL."""
     setup_logging()
     try:
+        context = build_container()
         if nli_provider in {None, "mock"}:
-            artifact = build_rag_evidence(
+            artifact = context.rag.build_rag_evidence(
                 report_path=report,
                 evidence_path=evidence,
                 output_path=output,
@@ -58,15 +53,14 @@ def rag_evidence(
                     "--nli-responses is only valid with --nli-provider mock",
                 )
             artifact = asyncio.run(
-                _rag_evidence_live_async(
-                    report=report,
-                    evidence=evidence,
-                    output=output,
+                context.rag.build_live_rag_evidence(
+                    report_path=report,
+                    evidence_path=evidence,
+                    output_path=output,
                     provider_name=nli_provider,
                     nli_model=nli_model,
                     concurrency=concurrency,
                     request_timeout_s=request_timeout_s,
-                    context=build_app_context(),
                 )
             )
     except (RagError, ValueError) as exc:
@@ -89,36 +83,3 @@ def rag_evidence(
             "output": str(output),
         }
     )
-
-
-async def _rag_evidence_live_async(
-    *,
-    report: Path,
-    evidence: Path,
-    output: Path,
-    provider_name: str,
-    nli_model: str,
-    concurrency: int,
-    request_timeout_s: float | None,
-    context: AppContext,
-) -> dict[str, Any]:
-    _require_live_scoring_provider(provider_name)
-    settings = context.settings
-    provider = context.build_provider(
-        provider_name,
-        concurrency=concurrency,
-        rpm=settings.nli_provider_rpm,
-        tpm=settings.nli_provider_tpm,
-    )
-    try:
-        return await build_live_rag_evidence(
-            report_path=report,
-            evidence_path=evidence,
-            output_path=output,
-            provider=provider,
-            nli_model=nli_model,
-            concurrency=concurrency,
-            policy=_provider_call_policy(settings, request_timeout_s),
-        )
-    finally:
-        await _close_provider(provider)

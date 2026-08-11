@@ -8,18 +8,18 @@ from typing import Any
 
 import pytest
 
-from evalharness.core.enums import ErrorClass, FinishReason
-from evalharness.core.models import (
+from evalharness.datasets import dataset_upsert_fields, load_dataset, validate_dataset
+from evalharness.domain.enums import ErrorClass, FinishReason
+from evalharness.domain.generation import (
     Capabilities,
     GenerationRequest,
     GenerationResponse,
     ModelVersion,
 )
-from evalharness.datasets import dataset_upsert_fields, load_dataset, validate_dataset
 from evalharness.execution import DecodeParamsError, Executor, validate_decode_params
 from evalharness.hashing import sha256_hex
-from evalharness.store.db import session_scope
-from evalharness.store.repository import RunRepository
+from evalharness.db.session import session_scope
+from evalharness.repositories import RunStoreUow
 
 
 @pytest.mark.parametrize(
@@ -120,7 +120,7 @@ async def test_create_run_rejects_non_numeric_temperature(db_ready) -> None:
     )
 
     async with session_scope() as session:
-        repo = RunRepository(session)
+        repo = RunStoreUow(session)
         dataset_id = await repo.upsert_dataset(**dataset_upsert_fields(bundle))
         prompt_template_id = await repo.upsert_prompt_template(
             name="t", version="1", body=template_body, sha256=template_sha

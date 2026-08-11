@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from evalharness.core.constants import OVERALL_SLICE
-from evalharness.core.enums import Requirement, TaskType
-from evalharness.core.models import AggregateValue, Case, Generation, ScoreValue, ScoringContext
+from evalharness.domain.constants import OVERALL_SLICE
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import Requirement, TaskType
+from evalharness.domain.generation import Generation
+from evalharness.domain.scoring import AggregateValue, ScoreValue, ScoringContext
 from evalharness.scoring.normalizer import Normalizer
 from evalharness.statistics import wilson_interval
 

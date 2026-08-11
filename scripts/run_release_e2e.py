@@ -12,15 +12,15 @@ from pathlib import Path
 import yaml
 from sqlalchemy import select
 
-from evalharness.cli import _compare_runs_async, _run_async
-from evalharness.core.models import ScoreValue
+from evalharness.app import build_container
+from evalharness.domain.scoring import ScoreValue
 from evalharness.providers.ollama import OllamaProvider
 from evalharness.reporting.report import write_report
 from evalharness.scoring.embeddings import EmbeddingService
 from evalharness.statistics import bca_bootstrap
-from evalharness.store.db import session_scope
-from evalharness.store.models import CaseRow, GenerationRow, RunRow
-from evalharness.store.repository import RunRepository
+from evalharness.db.session import session_scope
+from evalharness.db.models import CaseRow, GenerationRow, RunRow
+from evalharness.repositories import RunStoreUow
 
 ROOT = Path("release/v0.2.0")
 DATASET = ROOT / "work" / "qa-500"
@@ -96,7 +96,7 @@ async def semantic_rescore(run: RunRow, provider: OllamaProvider) -> None:
     )
     values: list[ScoreValue] = []
     async with session_scope() as session:
-        repo = RunRepository(session)
+        repo = RunStoreUow(session)
         generations = await repo.get_generations_for_run(run.id)
         cases = {
             row.id: row
@@ -162,6 +162,7 @@ async def semantic_rescore(run: RunRow, provider: OllamaProvider) -> None:
 async def main() -> None:
     baseline_template, candidate_template = prepare_inputs()
     REPORTS.mkdir(parents=True, exist_ok=True)
+    context = build_container()
     common = {
         "dataset_dir": DATASET,
         "model": "llama3.2:1b",
@@ -180,7 +181,10 @@ async def main() -> None:
     existing = await latest_runs()
     if len(existing) < 2:
         for template in (baseline_template, candidate_template):
-            result = await _run_async(template=template, **common)
+            result = await context.evaluation.run(
+                template=template,
+                **common,
+            )
             # The pipeline reports publishability; only the CLI aborts on it. Evidence
             # must never be assembled from a run that failed the coverage floor.
             if not result.report.publishable:
@@ -195,7 +199,12 @@ async def main() -> None:
     await write_report(baseline_run.id, REPORTS)
     await write_report(candidate_run.id, REPORTS)
 
-    comparison = await _compare_runs_async(baseline_run.id, candidate_run.id, "exact_match", True)
+    comparison = await context.compare.compare_runs(
+        baseline_run.id,
+        candidate_run.id,
+        "exact_match",
+        True,
+    )
     (ROOT / "comparison.json").write_text(json.dumps(comparison, indent=2), encoding="utf-8")
     manifest = {
         "baseline_run_id": str(baseline_run.id),

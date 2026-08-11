@@ -10,7 +10,7 @@ with no changes to the executor, scorer, store, or CLI.
 
 ## The `Provider` protocol
 
-Providers implement `evalharness.core.protocols.Provider`:
+Providers implement `evalharness.domain.provider.Provider`:
 
 | Method | Responsibility |
 |--------|----------------|

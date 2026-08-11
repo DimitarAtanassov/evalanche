@@ -9,9 +9,9 @@ from dataclasses import dataclass
 
 import httpx
 
-from evalharness.core.enums import ErrorClass
-from evalharness.core.models import GenerationRequest, GenerationResponse, ModelVersion
-from evalharness.core.protocols import Provider
+from evalharness.domain.enums import ErrorClass
+from evalharness.domain.generation import GenerationRequest, GenerationResponse, ModelVersion
+from evalharness.domain.provider import Provider
 from evalharness.observability import StageTimer, exception_summary, get_logger
 from evalharness.providers.retry import retry_after_seconds
 

@@ -7,22 +7,11 @@ from pathlib import Path
 
 import typer
 
+from evalharness.app import build_container
 from evalharness.cli._common import _emit_json, console, logger
-from evalharness.cli._provider import (
-    _close_provider,
-    _provider_call_policy,
-    _require_live_scoring_provider,
-)
-from evalharness.judge import (
-    JudgeError,
-    attach_calibration,
-    run_judgment,
-    run_live_judgment,
-    validate_calibration,
-)
-from evalharness.judge.models import JudgeMode, JudgmentArtifact
+from evalharness.judge import JudgeError
+from evalharness.judge.models import JudgeMode
 from evalharness.observability import exception_summary, setup_logging
-from evalharness.wiring import AppContext, build_app_context
 
 judge_app = typer.Typer(no_args_is_help=True)
 
@@ -51,8 +40,9 @@ def judge_run(
     """Run pointwise or pairwise judging into judgment.json (always informational)."""
     setup_logging()
     try:
+        context = build_container()
         if provider == "mock":
-            artifact = run_judgment(
+            artifact = context.judge.run_judgment(
                 mode=mode,
                 rubric_path=rubric,
                 candidates_path=candidates,
@@ -72,20 +62,19 @@ def judge_run(
                     "--responses is only valid with --provider mock",
                 )
             artifact = asyncio.run(
-                _judge_run_live_async(
+                context.judge.run_live_judgment(
                     mode=mode,
-                    rubric=rubric,
-                    candidates=candidates,
-                    pairs=pairs,
+                    rubric_path=rubric,
+                    candidates_path=candidates,
+                    pairs_path=pairs,
                     provider_name=provider,
                     model=model,
                     judge_family=judge_family,
                     candidate_family=candidate_family,
                     seed=seed,
-                    output=output,
+                    output_path=output,
                     concurrency=concurrency,
                     request_timeout_s=request_timeout_s,
-                    context=build_app_context(),
                 )
             )
     except (JudgeError, ValueError) as exc:
@@ -110,49 +99,6 @@ def judge_run(
     )
 
 
-async def _judge_run_live_async(
-    *,
-    mode: JudgeMode,
-    rubric: Path,
-    candidates: Path | None,
-    pairs: Path | None,
-    provider_name: str,
-    model: str,
-    judge_family: str,
-    candidate_family: str,
-    seed: int,
-    output: Path,
-    concurrency: int,
-    request_timeout_s: float | None,
-    context: AppContext,
-) -> JudgmentArtifact:
-    _require_live_scoring_provider(provider_name)
-    settings = context.settings
-    provider = context.build_provider(
-        provider_name,
-        concurrency=concurrency,
-        rpm=settings.judge_provider_rpm,
-        tpm=settings.judge_provider_tpm,
-    )
-    try:
-        return await run_live_judgment(
-            mode=mode,
-            rubric_path=rubric,
-            candidates_path=candidates,
-            pairs_path=pairs,
-            provider=provider,
-            model=model,
-            judge_family=judge_family,
-            candidate_family=candidate_family,
-            seed=seed,
-            output_path=output,
-            concurrency=concurrency,
-            policy=_provider_call_policy(settings, request_timeout_s),
-        )
-    finally:
-        await _close_provider(provider)
-
-
 @judge_app.command("validate")
 def judge_validate(
     judgments: Path = typer.Option(..., "--judgments"),
@@ -164,7 +110,7 @@ def judge_validate(
     """Compute holdout calibration into calibration.json (source of the gate bit)."""
     setup_logging()
     try:
-        artifact = validate_calibration(
+        artifact = build_container().judge.validate_calibration(
             judgment_path=judgments,
             labels_dev_path=labels_dev,
             labels_holdout_path=labels_holdout,
@@ -194,7 +140,7 @@ def judge_attach_calibration(
     """Copy a passing calibration digest onto a new judgment artifact."""
     setup_logging()
     try:
-        artifact = attach_calibration(
+        artifact = build_container().judge.attach_calibration(
             judgment_path=judgment,
             calibration_path=calibration,
             output_path=output,

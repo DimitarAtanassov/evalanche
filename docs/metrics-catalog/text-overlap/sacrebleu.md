@@ -34,7 +34,7 @@ BLEU = brevity penalty × geometric mean of modified n‑gram precisions \(p_1..
 with candidate length \(c\), reference length \(r\). The metric divides SacreBLEU's 0–100
 score by 100 to land in `[0, 1]`.
 
-```417:440:src/evalharness/scoring/catalog.py
+```python
     def aggregate(self, values: list[ScoreValue]) -> AggregateValue:
         valid = [
             value for value in values if value.value is not None and "hypothesis" in value.detail
@@ -98,7 +98,7 @@ score by 100 to land in `[0, 1]`.
 
 ## References & code
 
-- Code: [`BleuMetric`](../../../src/evalharness/scoring/catalog.py); `sacrebleu`.
+- Code: [`BleuMetric`](../../../src/evalharness/scoring/metrics/overlap/bleu.py); `sacrebleu`.
 - Guide: [§6.5](../../guide.md#65-summarization--generation-overlap).
 - Lineage: Papineni et al. (2002) for BLEU; Post (2018), "A Call for Clarity in Reporting
   BLEU Scores" (SacreBLEU).

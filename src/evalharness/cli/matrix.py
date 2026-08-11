@@ -6,8 +6,9 @@ from pathlib import Path
 
 import typer
 
+from evalharness.app import build_container
 from evalharness.cli._common import _emit_json, console
-from evalharness.matrix import MatrixValidationError, load_baseline, load_matrix, promote_baseline
+from evalharness.matrix import MatrixValidationError
 
 matrix_app = typer.Typer(no_args_is_help=True)
 baseline_app = typer.Typer(no_args_is_help=True)
@@ -19,7 +20,7 @@ def matrix_validate(
 ) -> None:
     """Validate a matrix manifest and print name plus matrix_digest."""
     try:
-        loaded = load_matrix(manifest)
+        loaded = build_container().matrix.load_matrix(manifest)
     except MatrixValidationError as exc:
         console.print(f"[red]{exc.code}[/red] {exc}")
         raise typer.Exit(1) from exc
@@ -40,7 +41,7 @@ def matrix_digest_cmd(
 ) -> None:
     """Print the content-addressed matrix digest as JSON."""
     try:
-        loaded = load_matrix(manifest)
+        loaded = build_container().matrix.load_matrix(manifest)
     except MatrixValidationError as exc:
         console.print(f"[red]{exc.code}[/red] {exc}")
         raise typer.Exit(1) from exc
@@ -54,7 +55,7 @@ def baseline_validate(
 ) -> None:
     """Validate pinned baseline cells; optionally verify against a matrix."""
     try:
-        loaded = load_baseline(manifest, matrix=matrix)
+        loaded = build_container().matrix.load_baseline(manifest, matrix=matrix)
     except MatrixValidationError as exc:
         console.print(f"[red]{exc.code}[/red] {exc}")
         raise typer.Exit(1) from exc
@@ -85,7 +86,7 @@ def baseline_promote(
 ) -> None:
     """Write or merge an explicit digest-pinned baseline cell."""
     try:
-        baseline = promote_baseline(
+        baseline = build_container().matrix.promote_baseline(
             matrix_path=matrix,
             cell_id=cell,
             run_report_path=run_report,

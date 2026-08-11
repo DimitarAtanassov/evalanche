@@ -26,7 +26,7 @@ Each principle below states the rule, *why* it exists, and where it lives in the
    failures from coverage denominators; report coverage loss against planned
    `(case, repeat)` cardinality.
    *Why:* a flaky network must never make a model look worse.
-   *Where:* `core/enums.FailureOutcome`; coverage math in `reporting/report.py`. See
+   *Where:* `domain/enums.FailureOutcome`; coverage math in `reporting/report.py`. See
    [dataplane.md](dataplane.md#coverage-and-publishability).
 
 4. **No point estimate without an interval.** Rates ship with a 95% CI (Wilson for
@@ -60,7 +60,7 @@ Each principle below states the rule, *why* it exists, and where it lives in the
 9. **One provider file to extend.** New backends implement `Provider` + one
    entry‑point line. No runner/scorer/store/API edits for adapters.
    *Why:* keeps the blast radius of a new backend tiny.
-   *Where:* `core/protocols.Provider`, `providers/registry.py`, `pyproject.toml` entry
+   *Where:* `domain/provider.Provider`, `providers/registry.py`, `pyproject.toml` entry
    points. See [providers.md](providers.md#adding-a-provider).
 
 10. **Docs match code.** If behavior changes, update `docs/` in the same PR.

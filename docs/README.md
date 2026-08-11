@@ -22,7 +22,7 @@ repeat it.
 | [guide.md](guide.md) | The deep onboarding & operations guide: mental model, CLI reference, database deep‑dive with a copy‑paste SQL library, full metric + statistics detail, log decoding, and a runbook. **The single source of truth for formulas and queries.** |
 | [architecture.md](architecture.md) | What the system is made of, the seams you must not violate, and a where‑to‑find‑what module map. |
 | [dataplane.md](dataplane.md) | The Case → Generate → Score → Report pipeline, including the cache, retries, three‑layer timeouts, the outcome taxonomy, and how coverage/publishability are computed. |
-| [schema.md](schema.md) | The PostgreSQL model (tables, constraints, indexes) aligned with `store/models.py` and Alembic `0003`. |
+| [schema.md](schema.md) | The PostgreSQL model (tables, constraints, indexes) aligned with `db/models.py` and Alembic `0003`. |
 | [metrics.md](metrics.md) | The metric catalog as a narrative: what each metric is *for*, when to reach for it, and how lexical / structured / classification / calibration / retrieval / overlap / semantic metrics compose with statistics for honest comparison. |
 | [metrics-catalog/](metrics-catalog/README.md) | The in‑depth per‑family, per‑metric drill‑down: beginner intuition, formulas, edge cases, registered names/versions, and code links. One subdirectory per family. |
 | [providers.md](providers.md) | The `Provider` protocol, the Ollama / OpenAI‑compatible / Mock adapters, the managed runtime (rate limiter + circuit breaker), and how to add a backend. |

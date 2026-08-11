@@ -6,7 +6,8 @@ required phrase is present, whether it parses as JSON with the right fields — 
 verdict with zero model calls and (mostly) zero randomness. They are your regression
 tripwires and hard gates, not your final quality verdict.
 
-All of these live in [`scoring/catalog.py`](../../../src/evalharness/scoring/catalog.py)
+All of these live in [`scoring/metrics/lexical/`](../../../src/evalharness/scoring/metrics/lexical/)
+and [`scoring/metrics/structured/`](../../../src/evalharness/scoring/metrics/structured/)
 (except `exact_match`, which lives in
 [`scoring/exact_match.py`](../../../src/evalharness/scoring/exact_match.py) so it can own the
 versioned `Normalizer`).
@@ -38,7 +39,7 @@ versioned `Normalizer`).
 
 ## Shared mechanics you should know
 
-- **`ScalarMetric` base.** Every metric in `catalog.py` subclasses `ScalarMetric`, which
+- **`ScalarMetric` base.** Every built-in metric subclasses `ScalarMetric` (`scoring/base.py`), which
   provides the default `score()`/`aggregate()`: value in `[0,1]`, `passed = value ≥
   threshold` (default `0.5`), aggregate = **mean + Wilson 95% CI** over thresholded
   successes (`method="mean+wilson"`). `exact_match` uses its own Wilson‑only aggregate.

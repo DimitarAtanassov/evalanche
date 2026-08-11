@@ -6,8 +6,9 @@ import json
 import time
 import tracemalloc
 
-from evalharness.core.enums import FailureOutcome, TaskType
-from evalharness.core.models import Case, Generation
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import FailureOutcome, TaskType
+from evalharness.domain.generation import Generation
 from evalharness.scoring.engine import ScoringEngine
 
 

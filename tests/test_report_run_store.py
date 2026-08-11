@@ -9,8 +9,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from evalharness.core.enums import FailureOutcome, TaskType
-from evalharness.core.models import Case
+from evalharness.domain.dataset import Case
+from evalharness.domain.enums import FailureOutcome, TaskType
 from evalharness.reporting import io as report_io
 from evalharness.reporting.report import build_report
 
